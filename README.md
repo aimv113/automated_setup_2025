@@ -58,3 +58,6 @@ apt show tensorrt
 sudo apt-get install tensorrt
 
 
+(in venv) pip install ultralytics nvidia-tensorrt onnxruntime-gpu
+
+
