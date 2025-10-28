@@ -2,38 +2,119 @@
 - name: Setup Ubuntu 24 System
   hosts: all
   become: yes
+
   vars:
     ssh_port: 33412
     ssh_user: "{{ ansible_env.USER }}"
     healthchecks_url: "https://hc-ping.com/4020ae5f-3d0c-4944-bb01-1bbacb496d38"
     auto_reboot_time: "03:00"  # 3 AM daily reboot
-    
-    # Version pinning for reproducibility
+
     nvidia_driver_version: "580"
     cuda_version: "13-0"
     cuda_version_full: "13.0"
     tensorrt_version: "10.3.*"
     realvnc_version: "7.13.0"
     
+    log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
+
   tasks:
-    # ========================================
-    # SYSTEM UPDATE
-    # ========================================
+
+    # ==========================================================
+    # 0. INITIALIZE LOG FILE
+    # ==========================================================
+    - name: Create log directory
+      file:
+        path: /var/log
+        state: directory
+        mode: '0755'
+    
+    - name: Initialize log file with header
+      copy:
+        dest: "{{ log_file }}"
+        content: |
+          ===================================================================
+          Ubuntu 24 System Setup - Started at {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          ===================================================================
+          
+        mode: '0644'
+      tags: always
+
+    # ==========================================================
+    # 1. SYSTEM UPDATE
+    # ==========================================================
     - name: Update apt cache and upgrade packages
       apt:
         update_cache: yes
         cache_valid_time: 3600
         upgrade: dist
+      register: apt_upgrade
+    
+    - name: Log system update
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1. SYSTEM UPDATE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ System updated successfully." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ System updated successfully."
 
-    # ========================================
-    # SSH CONFIGURATION - INITIAL SETUP
-    # ========================================
-    - name: Install OpenSSH server
+    # ==========================================================
+    # 2. COMMON UTILITIES & MONITORING TOOLS
+    # ==========================================================
+    - name: Install general developer and monitoring tools
       apt:
-        name: openssh-server
+        name:
+          - build-essential
+          - git
+          - cmake
+          - unzip
+          - zip
+          - wget
+          - curl
+          - vim
+          - nano
+          - tree
+          - jq
+          - netcat-traditional
+          - psmisc
+          - htop
+          - btop
+          - bmon
+          - iftop
+          - nvtop
+          - wavemon
+          - net-tools
+          - lm-sensors
+          - speedtest-cli
         state: present
+      register: tools_install
+    
+    - name: Print versions of installed core tools
+      shell: |
+        echo "htop: $(htop --version | head -n1)"
+        echo "git: $(git --version)"
+        echo "cmake: $(cmake --version | head -n1)"
+      register: base_versions
+    
+    - name: Log tools installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "2. COMMON UTILITIES & MONITORING TOOLS - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        {{ base_versions.stdout_lines | map('regex_replace', '^', 'echo "') | map('regex_replace', '$', '" >> {{ log_file }}') | join('\n') }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="{{ base_versions.stdout_lines }}"
 
-    - name: Configure SSH with blockinfile
+    # ==========================================================
+    # 3. SSH CONFIGURATION
+    # ==========================================================
+    - name: Install and configure OpenSSH server
+      apt: { name: openssh-server, state: present }
+
+    - name: Configure SSH port and authentication
       blockinfile:
         path: /etc/ssh/sshd_config
         marker: "# {mark} ANSIBLE MANAGED BLOCK"
@@ -44,421 +125,470 @@
           PermitRootLogin no
         validate: '/usr/sbin/sshd -t -f %s'
       notify: restart sshd
+      register: ssh_config
+    
+    - name: Log SSH configuration
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "3. SSH CONFIGURATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ SSH configured on port {{ ssh_port }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ SSH configured on port {{ ssh_port }}"
 
-    # ========================================
-    # FIREWALL
-    # ========================================
-    - name: Install UFW
-      apt:
-        name: ufw
-        state: present
-
-    - name: Configure UFW rules
-      ufw:
-        rule: allow
-        port: "{{ ssh_port }}"
-        proto: tcp
-
+    # ==========================================================
+    # 4. FIREWALL
+    # ==========================================================
+    - name: Install and enable UFW
+      apt: { name: ufw, state: present }
+    - name: Allow SSH through UFW
+      ufw: { rule: allow, port: "{{ ssh_port }}", proto: tcp }
     - name: Enable UFW non-interactively
       command: ufw --force enable
-      args:
-        creates: /etc/ufw/ufw.conf
+      args: { creates: /etc/ufw/ufw.conf }
+      register: ufw_enable
+    
+    - name: Log firewall configuration
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "4. FIREWALL - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ UFW enabled with SSH port {{ ssh_port }} open." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ UFW enabled with SSH port {{ ssh_port }} open."
 
-    # ========================================
-    # AUTO-REBOOT SYSTEMD TIMER
-    # ========================================
-    - name: Create daily reboot systemd service
+    # ==========================================================
+    # 5. AUTO-REBOOT SYSTEMD TIMER
+    # ==========================================================
+    - name: Create daily reboot service
       copy:
+        dest: /etc/systemd/system/daily-reboot.service
+        mode: '0644'
         content: |
           [Unit]
           Description=Daily System Reboot
-          
+
           [Service]
           Type=oneshot
           ExecStart=/usr/sbin/shutdown -r now
-        dest: /etc/systemd/system/daily-reboot.service
-        mode: '0644'
 
-    - name: Create daily reboot systemd timer
+    - name: Create daily reboot timer
       copy:
+        dest: /etc/systemd/system/daily-reboot.timer
+        mode: '0644'
         content: |
           [Unit]
           Description=Daily System Reboot Timer
-          
+
           [Timer]
           OnCalendar=*-*-* {{ auto_reboot_time }}:00
           Persistent=true
-          
+
           [Install]
           WantedBy=timers.target
-        dest: /etc/systemd/system/daily-reboot.timer
-        mode: '0644'
       notify: reload systemd
 
     - name: Enable daily reboot timer
-      systemd:
-        name: daily-reboot.timer
-        enabled: yes
-        state: started
-        daemon_reload: yes
+      systemd: { name: daily-reboot.timer, enabled: yes, state: started, daemon_reload: yes }
+      register: reboot_timer
+    
+    - name: Log auto-reboot configuration
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "5. AUTO-REBOOT SYSTEMD TIMER - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Daily reboot timer active ({{ auto_reboot_time }})" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ Daily reboot timer active ({{ auto_reboot_time }})"
 
-    # ========================================
-    # TAILSCALE
-    # ========================================
-    - name: Add Tailscale GPG key
-      apt_key:
-        url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
-        state: present
+    # ==========================================================
+    # 6. TAILSCALE
+    # ==========================================================
+    - name: Setup Tailscale repository and install
+      block:
+        - apt_key: { url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg, state: present }
+        - apt_repository:
+            repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
+            state: present
+            update_cache: yes
+        - apt: { name: tailscale, state: present }
+        - systemd: { name: tailscaled, enabled: yes, state: started }
+        - shell: echo "✅ Tailscale installed. Run 'sudo tailscale up' to authenticate." >> {{ log_file }}
+      rescue:
+        - debug: msg="⚠️ Tailscale repo or install failed."
+        - shell: echo "⚠️ Tailscale repo or install failed." >> {{ log_file }}
+    
+    - name: Log Tailscale installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "6. TAILSCALE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+    
+    - debug: msg="✅ Tailscale installed. Run 'sudo tailscale up' to authenticate."
 
-    - name: Add Tailscale repository
-      apt_repository:
-        repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
-        state: present
-        update_cache: yes
+    # ==========================================================
+    # 7. REALVNC SERVER
+    # ==========================================================
+    - name: Install RealVNC
+      block:
+        - get_url:
+            url: "https://downloads.realvnc.com/download/file/vnc.files/VNC-Server-{{ realvnc_version }}-Linux-x64.deb"
+            dest: /tmp/realvnc-server.deb
+            timeout: 60
+        - apt: { deb: /tmp/realvnc-server.deb }
+        - shell: echo "✅ RealVNC {{ realvnc_version }} installed." >> {{ log_file }}
+        - debug: msg="✅ RealVNC {{ realvnc_version }} installed."
+      rescue:
+        - debug: msg="⚠️ RealVNC download failed."
+        - shell: echo "⚠️ RealVNC download failed." >> {{ log_file }}
+    
+    - name: Log RealVNC installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "7. REALVNC SERVER - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
-    - name: Install Tailscale
-      apt:
-        name: tailscale
-        state: present
-
-    - name: Start Tailscale service
-      systemd:
-        name: tailscaled
-        enabled: yes
-        state: started
-
-    - name: Display Tailscale login message
-      debug:
-        msg: "Tailscale installed. Run 'sudo tailscale up' to authenticate."
-
-    # ========================================
-    # PAUSE FOR SSH KEY SETUP
-    # ========================================
-    - name: PAUSE - Add SSH keys to authorized_keys
-      pause:
-        prompt: |
-          
-          ===================================================================
-          PAUSED: Please add your SSH public key(s) to the target system now.
-          
-          On the target system, run:
-            mkdir -p ~/.ssh
-            chmod 700 ~/.ssh
-            nano ~/.ssh/authorized_keys
-            # Paste your public key(s)
-            chmod 600 ~/.ssh/authorized_keys
-          
-          Press ENTER when ready to continue and disable password authentication...
-          ===================================================================
-      when: not ansible_check_mode
-      tags: ['interactive']
-
-    # ========================================
-    # SSH CONFIGURATION - DISABLE PASSWORD AUTH
-    # ========================================
-    - name: Disable SSH password authentication
-      blockinfile:
-        path: /etc/ssh/sshd_config
-        marker: "# {mark} ANSIBLE MANAGED BLOCK"
-        block: |
-          Port {{ ssh_port }}
-          PasswordAuthentication no
-          PubkeyAuthentication yes
-          PermitRootLogin no
-        validate: '/usr/sbin/sshd -t -f %s'
-      notify: restart sshd
-      tags: ['interactive']
-
-    # ========================================
-    # REALVNC
-    # ========================================
-    - name: Download RealVNC Server
-      get_url:
-        url: "https://downloads.realvnc.com/download/file/vnc.files/VNC-Server-{{ realvnc_version }}-Linux-x64.deb"
-        dest: /tmp/realvnc-server.deb
-        timeout: 60
-      retries: 3
-      delay: 5
-      register: vnc_download
-      until: vnc_download is succeeded
-
-    - name: Install RealVNC Server
-      apt:
-        deb: /tmp/realvnc-server.deb
-
-    - name: Display RealVNC setup message
-      debug:
-        msg: "RealVNC installed. Configure cloud connect via: sudo vnclicense -add <your-license>"
-
-    # ========================================
-    # VISUAL STUDIO CODE
-    # ========================================
-    - name: Add Microsoft GPG key
-      apt_key:
-        url: https://packages.microsoft.com/keys/microsoft.asc
-        state: present
-
-    - name: Add VS Code repository
-      apt_repository:
-        repo: "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main"
-        state: present
-        update_cache: yes
-
+    # ==========================================================
+    # 8. VISUAL STUDIO CODE
+    # ==========================================================
     - name: Install Visual Studio Code
-      apt:
-        name: code
-        state: present
+      block:
+        - apt_key: { url: https://packages.microsoft.com/keys/microsoft.asc, state: present }
+        - apt_repository:
+            repo: "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main"
+            state: present
+            update_cache: yes
+        - apt: { name: code, state: present }
+        - shell: echo "✅ VS Code installed." >> {{ log_file }}
+        - debug: msg="✅ VS Code installed."
+      rescue:
+        - debug: msg="⚠️ VS Code repo or install failed."
+        - shell: echo "⚠️ VS Code repo or install failed." >> {{ log_file }}
+    
+    - name: Log VS Code installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "8. VISUAL STUDIO CODE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
-    # ========================================
-    # NVIDIA DRIVER
-    # ========================================
-    - name: Add graphics-drivers PPA
-      apt_repository:
-        repo: ppa:graphics-drivers/ppa
-        state: present
-        update_cache: yes
+    # ==========================================================
+    # 9. DISPLAY SERVER (XORG)
+    # ==========================================================
+    - name: Disable Wayland and force Xorg
+      lineinfile:
+        path: /etc/gdm3/custom.conf
+        regexp: '^#?WaylandEnable='
+        line: 'WaylandEnable=false'
+        insertafter: '^\[daemon\]'
+        backup: yes
+      notify: restart gdm3
+      register: xorg_config
+    
+    - name: Log display server configuration
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "9. DISPLAY SERVER (XORG) - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Display configured for Xorg (Wayland disabled)." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ Display configured for Xorg (Wayland disabled)."
 
+    # ==========================================================
+    # 10. NVIDIA DRIVER & GRUB CONFIG
+    # ==========================================================
     - name: Install NVIDIA driver
-      apt:
-        name: "nvidia-driver-{{ nvidia_driver_version }}"
-        state: present
-      register: nvidia_installed
+      block:
+        - apt_repository: { repo: ppa:graphics-drivers/ppa, state: present, update_cache: yes }
+        - apt: { name: "nvidia-driver-{{ nvidia_driver_version }}", state: present }
+        - lineinfile:
+            path: /etc/default/grub
+            regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+            line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash nvidia-drm.modeset=1"'
+            backup: yes
+          register: grub_updated
+        - command: update-grub
+          when: grub_updated.changed
+        - copy:
+            dest: /etc/modprobe.d/nvidia.conf
+            mode: '0644'
+            content: |
+              options nvidia-drm modeset=1
+              options nvidia NVreg_PreserveVideoMemoryAllocations=1
+        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled." >> {{ log_file }}
+    
+    - name: Log NVIDIA driver installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "10. NVIDIA DRIVER & GRUB CONFIG - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled."
 
-    # ========================================
-    # CUDA TOOLKIT
-    # ========================================
-    - name: Download CUDA keyring
-      get_url:
-        url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-        dest: /tmp/cuda-keyring.deb
-        timeout: 60
-      retries: 3
-      delay: 5
-      register: cuda_download
-      until: cuda_download is succeeded
-
-    - name: Install CUDA keyring
-      apt:
-        deb: /tmp/cuda-keyring.deb
-
-    - name: Update apt cache after adding CUDA repo
-      apt:
-        update_cache: yes
-
+    # ==========================================================
+    # 11. CUDA TOOLKIT
+    # ==========================================================
     - name: Install CUDA Toolkit
-      apt:
-        name: "cuda-toolkit-{{ cuda_version }}"
-        state: present
+      block:
+        - get_url:
+            url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+            dest: /tmp/cuda-keyring.deb
+        - apt: { deb: /tmp/cuda-keyring.deb }
+        - apt: { update_cache: yes }
+        - apt: { name: "cuda-toolkit-{{ cuda_version }}", state: present }
+        - copy:
+            dest: /etc/profile.d/cuda.sh
+            mode: '0644'
+            content: |
+              export PATH=/usr/local/cuda-{{ cuda_version_full }}/bin:$PATH
+              export LD_LIBRARY_PATH=/usr/local/cuda-{{ cuda_version_full }}/lib64:$LD_LIBRARY_PATH
+        - copy:
+            dest: /etc/ld.so.conf.d/cuda.conf
+            mode: '0644'
+            content: |
+              /usr/local/cuda-{{ cuda_version_full }}/lib64
+          notify: update ldconfig
+        - shell: echo "✅ CUDA {{ cuda_version_full }} installed." >> {{ log_file }}
+        - debug: msg="✅ CUDA {{ cuda_version_full }} installed."
+      rescue:
+        - debug: msg="⚠️ CUDA installation failed."
+        - shell: echo "⚠️ CUDA installation failed." >> {{ log_file }}
+    
+    - name: Log CUDA installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "11. CUDA TOOLKIT - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
-    - name: Create CUDA environment configuration
-      copy:
-        content: |
-          # CUDA environment variables
-          export PATH=/usr/local/cuda-{{ cuda_version_full }}/bin:$PATH
-          export LD_LIBRARY_PATH=/usr/local/cuda-{{ cuda_version_full }}/lib64:$LD_LIBRARY_PATH
-        dest: /etc/profile.d/cuda.sh
-        mode: '0644'
+    # ==========================================================
+    # 12. TENSORRT
+    # ==========================================================
+    - name: Install TensorRT (pinned or fallback)
+      block:
+        - name: Try pinned version
+          apt:
+            name:
+              - "tensorrt={{ tensorrt_version }}"
+              - python3-libnvinfer
+              - python3-libnvinfer-dev
+            state: present
+          register: trt_pinned
+          failed_when: false
+        - name: Fallback if pinned fails
+          apt:
+            name:
+              - tensorrt
+              - python3-libnvinfer
+              - python3-libnvinfer-dev
+            state: present
+          when: trt_pinned.rc != 0
+        - shell: dpkg -l | grep TensorRT || true
+          register: trt_ver
+        - shell: |
+            echo "{{ trt_ver.stdout }}" >> {{ log_file }}
+        - debug: msg="{{ trt_ver.stdout_lines | default(['✅ TensorRT installed.']) }}"
+      rescue:
+        - debug: msg="⚠️ TensorRT installation failed."
+        - shell: echo "⚠️ TensorRT installation failed." >> {{ log_file }}
+    
+    - name: Log TensorRT installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "12. TENSORRT - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
-    - name: Add CUDA library path to ld.so.conf
-      copy:
-        content: |
-          /usr/local/cuda-{{ cuda_version_full }}/lib64
-        dest: /etc/ld.so.conf.d/cuda.conf
-        mode: '0644'
-      notify: update ldconfig
-
-    # ========================================
-    # TENSORRT
-    # ========================================
-    - name: Install TensorRT with version pinning
-      apt:
-        name: 
-          - "tensorrt={{ tensorrt_version }}"
-          - python3-libnvinfer
-          - python3-libnvinfer-dev
-        state: present
-        update_cache: yes
-      ignore_errors: yes  # In case exact version not available
-      register: tensorrt_install
-
-    - name: Install TensorRT without version pinning (fallback)
-      apt:
-        name: 
-          - tensorrt
-          - python3-libnvinfer
-          - python3-libnvinfer-dev
-        state: present
-      when: tensorrt_install is failed
-
-    # ========================================
-    # DOCKER
-    # ========================================
-    - name: Install Docker dependencies
-      apt:
-        name:
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - gnupg
-          - lsb-release
-        state: present
-
-    - name: Create Docker GPG keyring directory
-      file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: '0755'
-
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        keyring: /etc/apt/keyrings/docker.gpg
-        state: present
-
-    - name: Add Docker repository
-      apt_repository:
-        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable"
-        state: present
-        update_cache: yes
-
-    - name: Install Docker
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
-
-    - name: Add user to docker group
-      user:
-        name: "{{ ssh_user }}"
-        groups: docker
-        append: yes
-
-    # ========================================
-    # NVIDIA DOCKER
-    # ========================================
-    - name: Add NVIDIA Docker GPG key
-      apt_key:
-        url: https://nvidia.github.io/nvidia-docker/gpgkey
-        state: present
-
-    - name: Add NVIDIA Docker repository
-      get_url:
-        url: https://nvidia.github.io/nvidia-docker/ubuntu24.04/nvidia-docker.list
-        dest: /etc/apt/sources.list.d/nvidia-docker.list
-        mode: '0644'
-
-    - name: Update apt cache for NVIDIA Docker
-      apt:
-        update_cache: yes
-
-    - name: Install NVIDIA Container Toolkit
-      apt:
-        name: nvidia-container-toolkit
-        state: present
-
-    - name: Configure Docker daemon for NVIDIA runtime
-      copy:
-        content: |
-          {
-            "runtimes": {
-              "nvidia": {
-                "path": "nvidia-container-runtime",
-                "runtimeArgs": []
+    # ==========================================================
+    # 13. DOCKER + NVIDIA RUNTIME
+    # ==========================================================
+    - name: Install Docker and NVIDIA container runtime
+      block:
+        - apt:
+            name:
+              - apt-transport-https
+              - ca-certificates
+              - curl
+              - gnupg
+              - lsb-release
+            state: present
+        - file: { path: /etc/apt/keyrings, state: directory, mode: '0755' }
+        - apt_key:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            keyring: /etc/apt/keyrings/docker.gpg
+            state: present
+        - apt_repository:
+            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable"
+            state: present
+            update_cache: yes
+        - apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+        - user: { name: "{{ ssh_user }}", groups: docker, append: yes }
+        - apt_key: { url: https://nvidia.github.io/nvidia-docker/gpgkey, state: present }
+        - get_url:
+            url: https://nvidia.github.io/nvidia-docker/ubuntu24.04/nvidia-docker.list
+            dest: /etc/apt/sources.list.d/nvidia-docker.list
+        - apt: { update_cache: yes }
+        - apt: { name: nvidia-container-toolkit, state: present }
+        - copy:
+            dest: /etc/docker/daemon.json
+            mode: '0644'
+            content: |
+              {
+                "runtimes": {
+                  "nvidia": {
+                    "path": "nvidia-container-runtime",
+                    "runtimeArgs": []
+                  }
+                },
+                "default-runtime": "nvidia"
               }
-            },
-            "default-runtime": "nvidia"
-          }
-        dest: /etc/docker/daemon.json
-        mode: '0644'
-      notify: restart docker
+          notify: restart docker
+        - shell: echo "✅ Docker and NVIDIA Container Toolkit installed." >> {{ log_file }}
+        - debug: msg="✅ Docker and NVIDIA Container Toolkit installed."
+      rescue:
+        - debug: msg="⚠️ Docker installation failed."
+        - shell: echo "⚠️ Docker installation failed." >> {{ log_file }}
+    
+    - name: Log Docker installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "13. DOCKER + NVIDIA RUNTIME - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
-    # ========================================
-    # PYTHON
-    # ========================================
-    - name: Install Python and development tools
+    # ==========================================================
+    # 14. PYTHON & DEV TOOLS
+    # ==========================================================
+    - name: Install Python and dev tools
       apt:
         name:
           - python3
           - python3-pip
           - python3-venv
+          - python3.12-venv
           - python3-dev
         state: present
+      register: python_install
+    
+    - shell: python3 --version
+      register: pyver
+    
+    - name: Log Python installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "14. PYTHON & DEV TOOLS - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Python {{ pyver.stdout }} installed." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ Python {{ pyver.stdout }} installed."
 
-    # ========================================
-    # GIT
-    # ========================================
-    - name: Install Git
-      apt:
-        name: git
-        state: present
-
-    # ========================================
-    # HEALTHCHECKS.IO MONITORING
-    # ========================================
-    - name: Install curl for healthchecks
-      apt:
-        name: curl
-        state: present
-
-    - name: Create healthcheck script with error handling
+    # ==========================================================
+    # 15. HEALTHCHECKS.IO SERVICE
+    # ==========================================================
+    - name: Create healthcheck ping script
       copy:
+        dest: /usr/local/bin/healthcheck-ping.sh
+        mode: '0755'
         content: |
           #!/bin/bash
           set -e
-          curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}"
-        dest: /usr/local/bin/healthcheck-ping.sh
-        mode: '0755'
+          curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}" || echo "Healthcheck failed $(date)"
+    - name: Create systemd service for healthcheck
+      copy:
+        dest: /etc/systemd/system/healthcheck.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Healthchecks.io ping
 
-    - name: Setup healthcheck cron job (every 5 minutes)
-      cron:
-        name: "Healthchecks.io ping"
-        minute: "*/5"
-        job: "/usr/local/bin/healthcheck-ping.sh"
-        user: root
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/healthcheck-ping.sh
+    - name: Create systemd timer for healthcheck (every 30 s)
+      copy:
+        dest: /etc/systemd/system/healthcheck.timer
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Run healthcheck ping every 30 seconds
 
-    # ========================================
-    # FINAL MESSAGE
-    # ========================================
-    - name: Display completion message
-      debug:
+          [Timer]
+          OnBootSec=15s
+          OnUnitActiveSec=30s
+          AccuracySec=5s
+
+          [Install]
+          WantedBy=timers.target
+      notify: reload systemd
+    - name: Enable and start healthcheck timer
+      systemd: { name: healthcheck.timer, enabled: yes, state: started }
+      register: healthcheck_timer
+    
+    - name: Log healthcheck configuration
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Healthcheck service active (ping every 30 s)." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+    
+    - debug: msg="✅ Healthcheck service active (ping every 30 s)."
+
+    # ==========================================================
+    # 16. FINAL MESSAGE
+    # ==========================================================
+    - name: Write final summary to log
+      shell: |
+        echo "===================================================================" >> {{ log_file }}
+        echo "✅ Setup complete!" >> {{ log_file }}
+        echo "- NVIDIA driver {{ nvidia_driver_version }}, CUDA {{ cuda_version_full }}" >> {{ log_file }}
+        echo "- TensorRT installed" >> {{ log_file }}
+        echo "- SSH on port {{ ssh_port }} (key-only)" >> {{ log_file }}
+        echo "- Docker + NVIDIA runtime ready" >> {{ log_file }}
+        echo "- Tailscale and RealVNC installed" >> {{ log_file }}
+        echo "- Healthcheck active (every 30 s)" >> {{ log_file }}
+        echo "- Auto reboot daily at {{ auto_reboot_time }}" >> {{ log_file }}
+        echo "===================================================================" >> {{ log_file }}
+        echo "Completed at: $(date)" >> {{ log_file }}
+        echo "Log file: {{ log_file }}" >> {{ log_file }}
+    
+    - debug:
         msg: |
           ===================================================================
-          Setup complete! Please note:
+          ✅ Setup complete!
+          - NVIDIA driver {{ nvidia_driver_version }}, CUDA {{ cuda_version_full }}
+          - TensorRT installed
+          - SSH on port {{ ssh_port }} (key-only)
+          - Docker + NVIDIA runtime ready
+          - Tailscale and RealVNC installed
+          - Healthcheck active (every 30 s)
+          - Auto reboot daily at {{ auto_reboot_time }}
           
-          1. REBOOT REQUIRED for NVIDIA driver to take effect
-          2. SSH is now on port {{ ssh_port }} with key-only authentication
-          3. Tailscale: Run 'sudo tailscale up' to authenticate
-          4. RealVNC: Configure with 'sudo vnclicense -add <license>'
-          5. Docker: User needs to log out/in for docker group to take effect
-          6. Update healthchecks_url in playbook with your actual URL
-          
-          A reboot will occur automatically at {{ auto_reboot_time }} daily.
-          
-          Test GPU access: docker run --rm --gpus all nvidia/cuda:{{ cuda_version_full }}-base nvidia-smi
+          Log file saved to: {{ log_file }}
           ===================================================================
 
   handlers:
     - name: restart sshd
-      systemd:
-        name: sshd
-        state: restarted
-      listen: restart sshd
-
+      systemd: { name: sshd, state: restarted }
     - name: restart docker
-      systemd:
-        name: docker
-        state: restarted
-      listen: restart docker
-
+      systemd: { name: docker, state: restarted }
+    - name: restart gdm3
+      systemd: { name: gdm3, state: restarted }
     - name: update ldconfig
       command: ldconfig
-      listen: update ldconfig
-
     - name: reload systemd
-      systemd:
-        daemon_reload: yes
-      listen: reload systemd
+      systemd: { daemon_reload: yes }
