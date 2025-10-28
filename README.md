@@ -14,3 +14,7 @@ ssh finn@ip address
 
 git clone https://github.com/aimv113/automated_setup_2025.git
 
+cd automated_setup_2025/
+
+
+ansible-playbook ubuntu-setup.yml -i inventory.ini
