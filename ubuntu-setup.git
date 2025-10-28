@@ -1,0 +1,464 @@
+---
+- name: Setup Ubuntu 24 System
+  hosts: all
+  become: yes
+  vars:
+    ssh_port: 33412
+    ssh_user: "{{ ansible_env.USER }}"
+    healthchecks_url: "https://hc-ping.com/4020ae5f-3d0c-4944-bb01-1bbacb496d38"
+    auto_reboot_time: "03:00"  # 3 AM daily reboot
+    
+    # Version pinning for reproducibility
+    nvidia_driver_version: "580"
+    cuda_version: "13-0"
+    cuda_version_full: "13.0"
+    tensorrt_version: "10.3.*"
+    realvnc_version: "7.13.0"
+    
+  tasks:
+    # ========================================
+    # SYSTEM UPDATE
+    # ========================================
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        upgrade: dist
+
+    # ========================================
+    # SSH CONFIGURATION - INITIAL SETUP
+    # ========================================
+    - name: Install OpenSSH server
+      apt:
+        name: openssh-server
+        state: present
+
+    - name: Configure SSH with blockinfile
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          Port {{ ssh_port }}
+          PasswordAuthentication yes
+          PubkeyAuthentication yes
+          PermitRootLogin no
+        validate: '/usr/sbin/sshd -t -f %s'
+      notify: restart sshd
+
+    # ========================================
+    # FIREWALL
+    # ========================================
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Configure UFW rules
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: Enable UFW non-interactively
+      command: ufw --force enable
+      args:
+        creates: /etc/ufw/ufw.conf
+
+    # ========================================
+    # AUTO-REBOOT SYSTEMD TIMER
+    # ========================================
+    - name: Create daily reboot systemd service
+      copy:
+        content: |
+          [Unit]
+          Description=Daily System Reboot
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/sbin/shutdown -r now
+        dest: /etc/systemd/system/daily-reboot.service
+        mode: '0644'
+
+    - name: Create daily reboot systemd timer
+      copy:
+        content: |
+          [Unit]
+          Description=Daily System Reboot Timer
+          
+          [Timer]
+          OnCalendar=*-*-* {{ auto_reboot_time }}:00
+          Persistent=true
+          
+          [Install]
+          WantedBy=timers.target
+        dest: /etc/systemd/system/daily-reboot.timer
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Enable daily reboot timer
+      systemd:
+        name: daily-reboot.timer
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    # ========================================
+    # TAILSCALE
+    # ========================================
+    - name: Add Tailscale GPG key
+      apt_key:
+        url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+        state: present
+
+    - name: Add Tailscale repository
+      apt_repository:
+        repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
+        state: present
+        update_cache: yes
+
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: present
+
+    - name: Start Tailscale service
+      systemd:
+        name: tailscaled
+        enabled: yes
+        state: started
+
+    - name: Display Tailscale login message
+      debug:
+        msg: "Tailscale installed. Run 'sudo tailscale up' to authenticate."
+
+    # ========================================
+    # PAUSE FOR SSH KEY SETUP
+    # ========================================
+    - name: PAUSE - Add SSH keys to authorized_keys
+      pause:
+        prompt: |
+          
+          ===================================================================
+          PAUSED: Please add your SSH public key(s) to the target system now.
+          
+          On the target system, run:
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            nano ~/.ssh/authorized_keys
+            # Paste your public key(s)
+            chmod 600 ~/.ssh/authorized_keys
+          
+          Press ENTER when ready to continue and disable password authentication...
+          ===================================================================
+      when: not ansible_check_mode
+      tags: ['interactive']
+
+    # ========================================
+    # SSH CONFIGURATION - DISABLE PASSWORD AUTH
+    # ========================================
+    - name: Disable SSH password authentication
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          Port {{ ssh_port }}
+          PasswordAuthentication no
+          PubkeyAuthentication yes
+          PermitRootLogin no
+        validate: '/usr/sbin/sshd -t -f %s'
+      notify: restart sshd
+      tags: ['interactive']
+
+    # ========================================
+    # REALVNC
+    # ========================================
+    - name: Download RealVNC Server
+      get_url:
+        url: "https://downloads.realvnc.com/download/file/vnc.files/VNC-Server-{{ realvnc_version }}-Linux-x64.deb"
+        dest: /tmp/realvnc-server.deb
+        timeout: 60
+      retries: 3
+      delay: 5
+      register: vnc_download
+      until: vnc_download is succeeded
+
+    - name: Install RealVNC Server
+      apt:
+        deb: /tmp/realvnc-server.deb
+
+    - name: Display RealVNC setup message
+      debug:
+        msg: "RealVNC installed. Configure cloud connect via: sudo vnclicense -add <your-license>"
+
+    # ========================================
+    # VISUAL STUDIO CODE
+    # ========================================
+    - name: Add Microsoft GPG key
+      apt_key:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        state: present
+
+    - name: Add VS Code repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main"
+        state: present
+        update_cache: yes
+
+    - name: Install Visual Studio Code
+      apt:
+        name: code
+        state: present
+
+    # ========================================
+    # NVIDIA DRIVER
+    # ========================================
+    - name: Add graphics-drivers PPA
+      apt_repository:
+        repo: ppa:graphics-drivers/ppa
+        state: present
+        update_cache: yes
+
+    - name: Install NVIDIA driver
+      apt:
+        name: "nvidia-driver-{{ nvidia_driver_version }}"
+        state: present
+      register: nvidia_installed
+
+    # ========================================
+    # CUDA TOOLKIT
+    # ========================================
+    - name: Download CUDA keyring
+      get_url:
+        url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+        dest: /tmp/cuda-keyring.deb
+        timeout: 60
+      retries: 3
+      delay: 5
+      register: cuda_download
+      until: cuda_download is succeeded
+
+    - name: Install CUDA keyring
+      apt:
+        deb: /tmp/cuda-keyring.deb
+
+    - name: Update apt cache after adding CUDA repo
+      apt:
+        update_cache: yes
+
+    - name: Install CUDA Toolkit
+      apt:
+        name: "cuda-toolkit-{{ cuda_version }}"
+        state: present
+
+    - name: Create CUDA environment configuration
+      copy:
+        content: |
+          # CUDA environment variables
+          export PATH=/usr/local/cuda-{{ cuda_version_full }}/bin:$PATH
+          export LD_LIBRARY_PATH=/usr/local/cuda-{{ cuda_version_full }}/lib64:$LD_LIBRARY_PATH
+        dest: /etc/profile.d/cuda.sh
+        mode: '0644'
+
+    - name: Add CUDA library path to ld.so.conf
+      copy:
+        content: |
+          /usr/local/cuda-{{ cuda_version_full }}/lib64
+        dest: /etc/ld.so.conf.d/cuda.conf
+        mode: '0644'
+      notify: update ldconfig
+
+    # ========================================
+    # TENSORRT
+    # ========================================
+    - name: Install TensorRT with version pinning
+      apt:
+        name: 
+          - "tensorrt={{ tensorrt_version }}"
+          - python3-libnvinfer
+          - python3-libnvinfer-dev
+        state: present
+        update_cache: yes
+      ignore_errors: yes  # In case exact version not available
+      register: tensorrt_install
+
+    - name: Install TensorRT without version pinning (fallback)
+      apt:
+        name: 
+          - tensorrt
+          - python3-libnvinfer
+          - python3-libnvinfer-dev
+        state: present
+      when: tensorrt_install is failed
+
+    # ========================================
+    # DOCKER
+    # ========================================
+    - name: Install Docker dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Create Docker GPG keyring directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        keyring: /etc/apt/keyrings/docker.gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable"
+        state: present
+        update_cache: yes
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ssh_user }}"
+        groups: docker
+        append: yes
+
+    # ========================================
+    # NVIDIA DOCKER
+    # ========================================
+    - name: Add NVIDIA Docker GPG key
+      apt_key:
+        url: https://nvidia.github.io/nvidia-docker/gpgkey
+        state: present
+
+    - name: Add NVIDIA Docker repository
+      get_url:
+        url: https://nvidia.github.io/nvidia-docker/ubuntu24.04/nvidia-docker.list
+        dest: /etc/apt/sources.list.d/nvidia-docker.list
+        mode: '0644'
+
+    - name: Update apt cache for NVIDIA Docker
+      apt:
+        update_cache: yes
+
+    - name: Install NVIDIA Container Toolkit
+      apt:
+        name: nvidia-container-toolkit
+        state: present
+
+    - name: Configure Docker daemon for NVIDIA runtime
+      copy:
+        content: |
+          {
+            "runtimes": {
+              "nvidia": {
+                "path": "nvidia-container-runtime",
+                "runtimeArgs": []
+              }
+            },
+            "default-runtime": "nvidia"
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: restart docker
+
+    # ========================================
+    # PYTHON
+    # ========================================
+    - name: Install Python and development tools
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - python3-dev
+        state: present
+
+    # ========================================
+    # GIT
+    # ========================================
+    - name: Install Git
+      apt:
+        name: git
+        state: present
+
+    # ========================================
+    # HEALTHCHECKS.IO MONITORING
+    # ========================================
+    - name: Install curl for healthchecks
+      apt:
+        name: curl
+        state: present
+
+    - name: Create healthcheck script with error handling
+      copy:
+        content: |
+          #!/bin/bash
+          set -e
+          curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}"
+        dest: /usr/local/bin/healthcheck-ping.sh
+        mode: '0755'
+
+    - name: Setup healthcheck cron job (every 5 minutes)
+      cron:
+        name: "Healthchecks.io ping"
+        minute: "*/5"
+        job: "/usr/local/bin/healthcheck-ping.sh"
+        user: root
+
+    # ========================================
+    # FINAL MESSAGE
+    # ========================================
+    - name: Display completion message
+      debug:
+        msg: |
+          ===================================================================
+          Setup complete! Please note:
+          
+          1. REBOOT REQUIRED for NVIDIA driver to take effect
+          2. SSH is now on port {{ ssh_port }} with key-only authentication
+          3. Tailscale: Run 'sudo tailscale up' to authenticate
+          4. RealVNC: Configure with 'sudo vnclicense -add <license>'
+          5. Docker: User needs to log out/in for docker group to take effect
+          6. Update healthchecks_url in playbook with your actual URL
+          
+          A reboot will occur automatically at {{ auto_reboot_time }} daily.
+          
+          Test GPU access: docker run --rm --gpus all nvidia/cuda:{{ cuda_version_full }}-base nvidia-smi
+          ===================================================================
+
+  handlers:
+    - name: restart sshd
+      systemd:
+        name: sshd
+        state: restarted
+      listen: restart sshd
+
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
+      listen: restart docker
+
+    - name: update ldconfig
+      command: ldconfig
+      listen: update ldconfig
+
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+      listen: reload systemd
