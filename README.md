@@ -10,5 +10,7 @@ sudo systemctl enable ssh
 
 
 hostname -I
-ssh finn@<<ip address>
+ssh finn@ip address
+
+git clone https://github.com/aimv113/automated_setup_2025.git
 
