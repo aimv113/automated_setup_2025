@@ -51,3 +51,10 @@ sudo rm -f /etc/X11/xorg.conf.d/10-nvidia.conf 2>/dev/null
 
 # Restart GDM
 sudo systemctl restart gdm3
+
+
+For TensorRT
+apt show tensorrt
+sudo apt-get install tensorrt
+
+
