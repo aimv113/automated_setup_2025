@@ -1,6 +1,7 @@
 ---
 - name: Setup Ubuntu 24 System
-  hosts: all
+  hosts: localhost
+  connection: local
   become: yes
 
   vars:
