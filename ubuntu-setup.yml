@@ -6,7 +6,8 @@
 
   vars:
     ssh_port: 33412
-    ssh_user: "{{ ansible_env.USER }}"
+    ssh_user: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
+    user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
     auto_reboot_time: "06:00"  # 6 AM daily reboot
 
     nvidia_driver_version: "580"
@@ -932,48 +933,54 @@
     # 16. AUTO_TEST PYTHON ENVIRONMENT SETUP
     # ==========================================================
     - name: Create code directory structure
-      become: no
       file:
-        path: "{{ ansible_env.HOME }}/code/auto_test"
+        path: "{{ user_home }}/code/auto_test"
         state: directory
         mode: '0755'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
 
     - name: Create Python 3.12 virtual environment
-      become: no
-      command: python3.12 -m venv "{{ ansible_env.HOME }}/code/auto_test/venv"
+      become: yes
+      become_user: "{{ ssh_user }}"
+      command: python3.12 -m venv "{{ user_home }}/code/auto_test/venv"
       args:
-        creates: "{{ ansible_env.HOME }}/code/auto_test/venv"
+        creates: "{{ user_home }}/code/auto_test/venv"
 
     - name: Upgrade pip, setuptools, and wheel in venv
-      become: no
+      become: yes
+      become_user: "{{ ssh_user }}"
       shell: |
-        source {{ ansible_env.HOME }}/code/auto_test/venv/bin/activate
+        source {{ user_home }}/code/auto_test/venv/bin/activate
         pip install --upgrade pip setuptools wheel
       args:
         executable: /bin/bash
 
     - name: Install PyTorch with CUDA support
-      become: no
+      become: yes
+      become_user: "{{ ssh_user }}"
       shell: |
-        source {{ ansible_env.HOME }}/code/auto_test/venv/bin/activate
+        source {{ user_home }}/code/auto_test/venv/bin/activate
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
       args:
         executable: /bin/bash
       register: torch_install
 
     - name: Install ultralytics, tensorrt, and onnxruntime-gpu
-      become: no
+      become: yes
+      become_user: "{{ ssh_user }}"
       shell: |
-        source {{ ansible_env.HOME }}/code/auto_test/venv/bin/activate
+        source {{ user_home }}/code/auto_test/venv/bin/activate
         pip install ultralytics nvidia-tensorrt onnxruntime-gpu
       args:
         executable: /bin/bash
       register: ml_packages_install
 
     - name: Verify CUDA is available to PyTorch
-      become: no
+      become: yes
+      become_user: "{{ ssh_user }}"
       shell: |
-        source {{ ansible_env.HOME }}/code/auto_test/venv/bin/activate
+        source {{ user_home }}/code/auto_test/venv/bin/activate
         python3 << 'EOF'
         import torch
         print(f"PyTorch version: {torch.__version__}")
@@ -991,13 +998,14 @@
       failed_when: "'CUDA available: False' in cuda_verification.stdout"
 
     - name: Create activation helper script
-      become: no
       copy:
-        dest: "{{ ansible_env.HOME }}/code/auto_test/activate.sh"
+        dest: "{{ user_home }}/code/auto_test/activate.sh"
         mode: '0755'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
         content: |
           #!/bin/bash
-          source {{ ansible_env.HOME }}/code/auto_test/venv/bin/activate
+          source {{ user_home }}/code/auto_test/venv/bin/activate
           echo "Virtual environment activated!"
           echo "Python: $(which python3)"
           python3 << 'EOF'
