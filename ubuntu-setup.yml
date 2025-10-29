@@ -16,8 +16,10 @@
     tensorrt_version: "10.13.*"
     tensorrt_full_version: "10.13.*-1+cuda13.0"
     # TensorRT local repo URL - download from https://developer.nvidia.com/tensorrt
+    # IMPORTANT: Must match CUDA version (cuda-13.0 for CUDA 13.0, cuda-12.9 for CUDA 12.9)
     # Set to empty string "" to use network repo (less reliable when old versions are removed)
-    tensorrt_local_repo_url: ""  # Example: "https://your-server.com/nv-tensorrt-local-repo-ubuntu2404-10.13.0-cuda-13.0_1.0-1_amd64.deb"
+    # Recommended: Use latest point release (10.13.3) for CUDA 13.0
+    tensorrt_local_repo_url: "https://developer.download.nvidia.com/compute/tensorrt/10.13.3/local_installers/nv-tensorrt-local-repo-ubuntu2404-10.13.3-cuda-13.0_1.0-1_amd64.deb"
     realvnc_version: "7.13.0"
     
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"

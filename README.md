@@ -53,7 +53,7 @@ ssh-copy-id -p 33412 finn@<ip-address>
 
 The playbook automatically installs and configures:
 - **NVIDIA Driver 580** with CUDA 13.0
-- **TensorRT 10.13** (version-pinned and held from upgrades)
+- **TensorRT 10.13.3** (version-locked with `dpkg hold` - safe with `apt upgrade`)
 - **Docker** with NVIDIA Container Toolkit
 - **Tailscale** and **RealVNC Server**
 - **Python 3.12** virtual environment at `~/code/auto_test`
@@ -61,6 +61,22 @@ The playbook automatically installs and configures:
 - Healthchecks.io monitoring (30s interval)
 - SSH on custom port 33412
 - **Automatic VM detection** and display fixes (if running in a VM)
+
+### TensorRT Installation Method
+
+By default, the playbook uses the **local repository method** for TensorRT 10.13.3, which guarantees version availability even when newer versions are released.
+
+**Current setting:**
+```yaml
+tensorrt_local_repo_url: "https://developer.download.nvidia.com/compute/tensorrt/10.13.3/local_installers/nv-tensorrt-local-repo-ubuntu2404-10.13.3-cuda-13.0_1.0-1_amd64.deb"
+```
+
+**To use network repository instead** (only works while 10.13 is available):
+```yaml
+tensorrt_local_repo_url: ""  # Set to empty string
+```
+
+**Note:** TensorRT is version-locked with `dpkg hold`, so `sudo apt upgrade` will **NOT** upgrade it.
 
 ### Python Virtual Environment
 
