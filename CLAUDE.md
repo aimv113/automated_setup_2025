@@ -4,17 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Single Ansible playbook (`ubuntu-setup.yml`) for automated Ubuntu 24.04 setup with NVIDIA GPU support, ML environment, and monitoring. Designed for bare metal and VM installations with automatic environment detection.
+Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, ML environment, and monitoring. Designed for bare metal and VM installations with automatic environment detection.
 
-## Running the Playbook
+**Playbooks:**
+1. `ubuntu-setup.yml` - Main installation (run first)
+2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot)
 
+## Running the Playbooks
+
+**Step 1: Initial setup**
 ```bash
 ansible-playbook ubuntu-setup.yml -K -vv  # -K=sudo prompt, -vv=verbose
 ```
 
 **Interactive Prompt:** On first run, playbook prompts for Healthchecks.io URL (optional - can skip by pressing Enter).
 
-Test idempotency by running twice (second run should show no changes).
+**Step 2: Reboot**
+```bash
+sudo reboot
+```
+
+**Step 3: Verify installation**
+```bash
+ansible-playbook post-reboot-verify.yml -K -vv
+```
+
+Test idempotency by running setup twice (second run should show no changes).
 
 ## Architecture
 
@@ -88,9 +103,27 @@ realvnc_version: "7.13.0"
 
 ## Post-Installation Verification
 
+After running `ubuntu-setup.yml`, **reboot the system**, then run `post-reboot-verify.yml` to verify all components:
+
 ```bash
-# Check log
+sudo reboot  # Reboot first!
+
+# After reboot, run verification playbook
+ansible-playbook post-reboot-verify.yml -K -vv
+```
+
+The verification playbook checks:
+- ✅ NVIDIA driver loaded (`nvidia-smi`)
+- ✅ CUDA toolkit available (`nvcc --version`)
+- ✅ Docker NVIDIA runtime working
+- ✅ PyTorch CUDA support enabled
+- ✅ TensorRT packages installed
+
+**Manual verification (alternative):**
+```bash
+# Check logs
 sudo tail -100 /var/log/ansible-ubuntu-setup-*.log
+sudo tail -100 /var/log/ansible-post-reboot-verify-*.log
 
 # Verify GPU stack
 nvidia-smi
@@ -107,9 +140,6 @@ systemctl list-timers  # Should show auto-reboot and healthcheck
 
 # Check TensorRT pinning
 dpkg --get-selections | grep hold  # Should show tensorrt packages
-
-# Check if reboot is needed
-[ -f /var/run/reboot-required ] && echo "Reboot required" || echo "No reboot needed"
 ```
 
 ## Modifying the Playbook

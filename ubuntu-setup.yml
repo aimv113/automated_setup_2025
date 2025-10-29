@@ -956,47 +956,6 @@
       args:
         executable: /bin/bash
 
-    - name: Install PyTorch with CUDA support
-      become: yes
-      become_user: "{{ ssh_user }}"
-      shell: |
-        source {{ user_home }}/code/auto_test/venv/bin/activate
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-      args:
-        executable: /bin/bash
-      register: torch_install
-
-    - name: Install ultralytics, tensorrt, and onnxruntime-gpu
-      become: yes
-      become_user: "{{ ssh_user }}"
-      shell: |
-        source {{ user_home }}/code/auto_test/venv/bin/activate
-        pip install ultralytics nvidia-tensorrt onnxruntime-gpu
-      args:
-        executable: /bin/bash
-      register: ml_packages_install
-
-    - name: Verify CUDA is available to PyTorch
-      become: yes
-      become_user: "{{ ssh_user }}"
-      shell: |
-        source {{ user_home }}/code/auto_test/venv/bin/activate
-        python3 << 'EOF'
-        import torch
-        print(f"PyTorch version: {torch.__version__}")
-        print(f"CUDA available: {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            print(f"CUDA version: {torch.version.cuda}")
-            print(f"GPU count: {torch.cuda.device_count()}")
-            print(f"GPU name: {torch.cuda.get_device_name(0)}")
-        else:
-            print("WARNING: CUDA is not available to PyTorch!")
-        EOF
-      args:
-        executable: /bin/bash
-      register: cuda_verification
-      failed_when: "'CUDA available: False' in cuda_verification.stdout"
-
     - name: Create activation helper script
       copy:
         dest: "{{ user_home }}/code/auto_test/activate.sh"
@@ -1022,17 +981,18 @@
         echo "===========================================================" >> {{ log_file }}
         echo "✅ Created ~/code/auto_test directory" >> {{ log_file }}
         echo "✅ Python 3.12 virtual environment created" >> {{ log_file }}
-        echo "✅ Installed: ultralytics, nvidia-tensorrt, onnxruntime-gpu" >> {{ log_file }}
         echo "" >> {{ log_file }}
-        echo "{{ cuda_verification.stdout }}" >> {{ log_file }}
+        echo "⚠️  ML packages (PyTorch, ultralytics, etc.) will be installed after reboot" >> {{ log_file }}
+        echo "⚠️  Run post-reboot-verify.yml after reboot to install and verify" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
     - debug:
         msg: |
-          ✅ Auto test environment ready at ~/code/auto_test
-          {{ cuda_verification.stdout_lines }}
+          ✅ Virtual environment created at ~/code/auto_test
 
-          To activate: source ~/code/auto_test/activate.sh
+          ⚠️  Reboot required to load NVIDIA driver
+          ⚠️  After reboot, run: ansible-playbook post-reboot-verify.yml -K
+          This will install PyTorch, ultralytics, TensorRT, and verify CUDA
 
     # ==========================================================
     # 17. REBOOT NOTIFICATION

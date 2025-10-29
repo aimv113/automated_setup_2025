@@ -1,0 +1,213 @@
+---
+- name: Post-Reboot Verification
+  hosts: localhost
+  connection: local
+  become: yes
+
+  vars:
+    ssh_user: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
+    user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
+    log_file: "/var/log/ansible-post-reboot-verify-{{ ansible_date_time.iso8601_basic_short }}.log"
+
+  tasks:
+
+    # ==========================================================
+    # 1. LOG INITIALIZATION
+    # ==========================================================
+    - name: Initialize verification log file
+      shell: |
+        echo "===========================================================" > {{ log_file }}
+        echo "POST-REBOOT VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "Starting post-reboot verification - Log: {{ log_file }}"
+
+    # ==========================================================
+    # 2. VERIFY NVIDIA DRIVER
+    # ==========================================================
+    - name: Check NVIDIA driver is loaded
+      shell: nvidia-smi
+      register: nvidia_smi
+      failed_when: nvidia_smi.rc != 0
+
+    - name: Log NVIDIA driver status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1. NVIDIA DRIVER VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ NVIDIA driver loaded successfully" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "{{ nvidia_smi.stdout }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ NVIDIA driver loaded"
+
+    # ==========================================================
+    # 3. VERIFY CUDA TOOLKIT
+    # ==========================================================
+    - name: Check CUDA version
+      shell: nvcc --version
+      register: nvcc_version
+      failed_when: nvcc_version.rc != 0
+
+    - name: Log CUDA toolkit status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "2. CUDA TOOLKIT VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ CUDA toolkit available" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "{{ nvcc_version.stdout }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ CUDA toolkit available"
+
+    # ==========================================================
+    # 4. VERIFY DOCKER + NVIDIA RUNTIME
+    # ==========================================================
+    - name: Test Docker with NVIDIA runtime
+      shell: docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
+      register: docker_nvidia
+      failed_when: docker_nvidia.rc != 0
+
+    - name: Log Docker NVIDIA runtime status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "3. DOCKER + NVIDIA RUNTIME VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Docker can access GPU" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "{{ docker_nvidia.stdout }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ Docker can access GPU"
+
+    # ==========================================================
+    # 5. INSTALL ML PACKAGES WITH CUDA SUPPORT
+    # ==========================================================
+    - name: Install PyTorch with CUDA support
+      become: yes
+      become_user: "{{ ssh_user }}"
+      shell: |
+        source {{ user_home }}/code/auto_test/venv/bin/activate
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+      args:
+        executable: /bin/bash
+      register: torch_install
+
+    - name: Install ultralytics, tensorrt, and onnxruntime-gpu
+      become: yes
+      become_user: "{{ ssh_user }}"
+      shell: |
+        source {{ user_home }}/code/auto_test/venv/bin/activate
+        pip install ultralytics nvidia-tensorrt onnxruntime-gpu
+      args:
+        executable: /bin/bash
+      register: ml_packages_install
+
+    - name: Log ML package installation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "4. ML PACKAGES INSTALLATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Installed PyTorch with CUDA 12.1 support" >> {{ log_file }}
+        echo "✅ Installed ultralytics, nvidia-tensorrt, onnxruntime-gpu" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ ML packages installed with CUDA support"
+
+    # ==========================================================
+    # 6. VERIFY PYTORCH CUDA SUPPORT
+    # ==========================================================
+    - name: Verify CUDA is available to PyTorch
+      become: yes
+      become_user: "{{ ssh_user }}"
+      shell: |
+        source {{ user_home }}/code/auto_test/venv/bin/activate
+        python3 << 'EOF'
+        import torch
+        print(f"PyTorch version: {torch.__version__}")
+        print(f"CUDA available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"CUDA version: {torch.version.cuda}")
+            print(f"GPU count: {torch.cuda.device_count()}")
+            print(f"GPU name: {torch.cuda.get_device_name(0)}")
+        else:
+            print("WARNING: CUDA is not available to PyTorch!")
+        EOF
+      args:
+        executable: /bin/bash
+      register: cuda_verification
+      failed_when: "'CUDA available: False' in cuda_verification.stdout"
+
+    - name: Log PyTorch CUDA status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "5. PYTORCH CUDA VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "{{ cuda_verification.stdout }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "{{ cuda_verification.stdout_lines }}"
+
+    # ==========================================================
+    # 7. VERIFY TENSORRT
+    # ==========================================================
+    - name: Check TensorRT installation
+      shell: dpkg -l | grep tensorrt
+      register: tensorrt_check
+      failed_when: tensorrt_check.rc != 0
+
+    - name: Log TensorRT status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "6. TENSORRT VERIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ TensorRT packages installed:" >> {{ log_file }}
+        echo "{{ tensorrt_check.stdout }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ TensorRT packages installed"
+
+    # ==========================================================
+    # 8. FINAL SUMMARY
+    # ==========================================================
+    - name: Log verification summary
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "VERIFICATION SUMMARY - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ All verifications passed!" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "Your system is ready for ML workloads." >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "To use the ML environment:" >> {{ log_file }}
+        echo "  source ~/code/auto_test/activate.sh" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+        echo "Log file: {{ log_file }}" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+
+    - debug:
+        msg: |
+          ✅ ✅ ✅ ALL VERIFICATIONS PASSED! ✅ ✅ ✅
+
+          Your system is fully configured and ready for ML workloads:
+          • NVIDIA Driver: Loaded
+          • CUDA Toolkit: Available
+          • Docker + NVIDIA Runtime: Working
+          • ML Packages: Installed (PyTorch, ultralytics, TensorRT, onnxruntime-gpu)
+          • PyTorch CUDA Support: Enabled
+          • TensorRT: Verified
+
+          To use the ML environment:
+            source ~/code/auto_test/activate.sh
+
+          Log file: {{ log_file }}

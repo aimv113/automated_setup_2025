@@ -43,7 +43,29 @@ ansible-playbook ubuntu-setup.yml -K
 - Create a free account at https://healthchecks.io and paste the ping URL when prompted
 - Press Enter to skip healthcheck monitoring
 
-### 4. Copy SSH Keys
+### 4. Reboot and Verify
+
+After the initial setup completes, **reboot the system** to load the NVIDIA driver:
+
+```bash
+sudo reboot
+```
+
+After reboot, run the verification playbook to confirm everything is working:
+
+```bash
+cd automated_setup_2025/
+ansible-playbook post-reboot-verify.yml -K
+```
+
+This will verify:
+- ✅ NVIDIA driver is loaded
+- ✅ CUDA toolkit is available
+- ✅ Docker can access GPU
+- ✅ PyTorch CUDA support is enabled
+- ✅ TensorRT is installed
+
+### 5. Copy SSH Keys
 
 ```bash
 ssh-copy-id -p 33412 finn@<ip-address>
