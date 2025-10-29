@@ -13,7 +13,8 @@
     nvidia_driver_version: "580"
     cuda_version: "13-0"
     cuda_version_full: "13.0"
-    tensorrt_version: "10.3.*"
+    tensorrt_version: "10.13.*"
+    tensorrt_full_version: "10.13.*-1+cuda13.0"
     realvnc_version: "7.13.0"
     
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
@@ -371,34 +372,84 @@
     # ==========================================================
     # 12. TENSORRT
     # ==========================================================
-    - name: Install TensorRT (pinned or fallback)
+    - name: Install TensorRT 10.13 with version pinning
       block:
-        - name: Try pinned version
+        - name: Update apt cache for TensorRT
           apt:
-            name:
-              - "tensorrt={{ tensorrt_version }}"
-              - python3-libnvinfer
-              - python3-libnvinfer-dev
-            state: present
-          register: trt_pinned
+            update_cache: yes
+
+        - name: Check available TensorRT versions
+          shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version }}" | head -1 | awk '{print $3}'
+          register: available_trt_version
           failed_when: false
-        - name: Fallback if pinned fails
+          changed_when: false
+
+        - name: Set TensorRT package version
+          set_fact:
+            trt_pkg_version: "{{ available_trt_version.stdout if available_trt_version.stdout != '' else tensorrt_full_version }}"
+
+        - name: Install TensorRT packages with specific version
           apt:
             name:
-              - tensorrt
-              - python3-libnvinfer
-              - python3-libnvinfer-dev
+              - "tensorrt-dev={{ trt_pkg_version }}"
+              - "tensorrt-libs={{ trt_pkg_version }}"
+              - "libnvinfer10={{ trt_pkg_version }}"
+              - "libnvinfer-dev={{ trt_pkg_version }}"
+              - "libnvinfer-headers-dev={{ trt_pkg_version }}"
+              - "libnvinfer-plugin10={{ trt_pkg_version }}"
+              - "libnvonnxparsers10={{ trt_pkg_version }}"
+              - "python3-libnvinfer={{ trt_pkg_version }}"
+              - "python3-libnvinfer-dev={{ trt_pkg_version }}"
             state: present
-          when: trt_pinned.rc != 0
-        - shell: dpkg -l | grep TensorRT || true
+            allow_downgrades: yes
+          register: trt_install
+
+        - name: Hold TensorRT packages at current version
+          dpkg_selections:
+            name: "{{ item }}"
+            selection: hold
+          loop:
+            - tensorrt-dev
+            - tensorrt-libs
+            - libnvinfer10
+            - libnvinfer-dev
+            - libnvinfer-headers-dev
+            - libnvinfer-plugin10
+            - libnvonnxparsers10
+            - python3-libnvinfer
+            - python3-libnvinfer-dev
+          when: trt_install.changed
+
+        - name: Verify installed TensorRT version
+          shell: dpkg -l | grep -E "(tensorrt|libnvinfer)" | grep -v "^rc"
           register: trt_ver
+          changed_when: false
+
         - shell: |
             echo "{{ trt_ver.stdout }}" >> {{ log_file }}
-        - debug: msg="{{ trt_ver.stdout_lines | default(['✅ TensorRT installed.']) }}"
+            echo "TensorRT packages held at version {{ trt_pkg_version }}" >> {{ log_file }}
+
+        - debug:
+            msg: |
+              ✅ TensorRT {{ tensorrt_version }} installed and pinned
+              Version: {{ trt_pkg_version }}
+
       rescue:
-        - debug: msg="⚠️ TensorRT installation failed."
-        - shell: echo "⚠️ TensorRT installation failed." >> {{ log_file }}
-    
+        - debug: msg="⚠️ TensorRT installation failed. Trying fallback..."
+
+        - name: Fallback - Install latest TensorRT without version pinning
+          apt:
+            name:
+              - tensorrt-dev
+              - tensorrt-libs
+              - python3-libnvinfer
+              - python3-libnvinfer-dev
+            state: present
+          register: trt_fallback
+
+        - debug: msg="⚠️ TensorRT installed but version pinning failed. Using latest available version."
+        - shell: echo "⚠️ TensorRT installed but version {{ tensorrt_version }} not available. Using latest." >> {{ log_file }}
+
     - name: Log TensorRT installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
