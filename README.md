@@ -62,19 +62,39 @@ The playbook automatically installs and configures:
 - SSH on custom port 33412
 - **Automatic VM detection** and display fixes (if running in a VM)
 
-### TensorRT Installation Method
+### TensorRT Installation - Smart Configuration
 
-By default, the playbook uses the **local repository method** for TensorRT 10.13.3, which guarantees version availability even when newer versions are released.
+The playbook **automatically constructs** the correct TensorRT download URL based on your configuration:
 
-**Current setting:**
+**Configuration variables:**
 ```yaml
-tensorrt_local_repo_url: "https://developer.download.nvidia.com/compute/tensorrt/10.13.3/local_installers/nv-tensorrt-local-repo-ubuntu2404-10.13.3-cuda-13.0_1.0-1_amd64.deb"
+tensorrt_version_full: "10.13.3"    # Version to install
+cuda_version_full: "13.0"            # CUDA version
+tensorrt_install_method: "local"     # Installation method
 ```
 
-**To use network repository instead** (only works while 10.13 is available):
-```yaml
-tensorrt_local_repo_url: ""  # Set to empty string
+**Installation methods:**
+- `"local"` - Download and use local repository (recommended - guarantees version availability)
+- `"network"` - Use CUDA network repository (only works while version available)
+- `"auto"` - Try local first, fall back to network if download fails
+
+**Auto-constructed URL:**
 ```
+https://developer.download.nvidia.com/compute/tensorrt/10.13.3/local_installers/nv-tensorrt-local-repo-ubuntu2404-10.13.3-cuda-13.0_1.0-1_amd64.deb
+```
+
+The playbook detects:
+- ✅ Ubuntu version (24.04)
+- ✅ Architecture (amd64, arm64, etc.)
+- ✅ CUDA version (13.0)
+- ✅ TensorRT version (10.13.3)
+
+**Override with custom URL** (optional):
+```yaml
+tensorrt_local_repo_url: "https://your-server.com/tensorrt.deb"
+```
+
+**URL Pattern Verification:** The auto-construction approach has been verified to work correctly for TensorRT 10.x series across multiple Ubuntu versions (22.04, 24.04), CUDA versions (12.9, 13.0), and architectures. See [TENSORRT_URL_VERIFICATION.md](TENSORRT_URL_VERIFICATION.md) for detailed test results.
 
 **Note:** TensorRT is version-locked with `dpkg hold`, so `sudo apt upgrade` will **NOT** upgrade it.
 

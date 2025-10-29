@@ -13,13 +13,21 @@
     nvidia_driver_version: "580"
     cuda_version: "13-0"
     cuda_version_full: "13.0"
-    tensorrt_version: "10.13.*"
-    tensorrt_full_version: "10.13.*-1+cuda13.0"
-    # TensorRT local repo URL - download from https://developer.nvidia.com/tensorrt
-    # IMPORTANT: Must match CUDA version (cuda-13.0 for CUDA 13.0, cuda-12.9 for CUDA 12.9)
-    # Set to empty string "" to use network repo (less reliable when old versions are removed)
-    # Recommended: Use latest point release (10.13.3) for CUDA 13.0
-    tensorrt_local_repo_url: "https://developer.download.nvidia.com/compute/tensorrt/10.13.3/local_installers/nv-tensorrt-local-repo-ubuntu2404-10.13.3-cuda-13.0_1.0-1_amd64.deb"
+
+    # TensorRT version configuration
+    tensorrt_version_major: "10.13"     # Major version (e.g., "10.13")
+    tensorrt_version_full: "10.13.3"    # Full version including point release (e.g., "10.13.3")
+    tensorrt_version_pattern: "10.13.*" # Pattern for apt search
+
+    # TensorRT installation method:
+    # - "local": Download and use local repository (recommended - guarantees version availability)
+    # - "network": Use CUDA network repository (only works while version available)
+    # - "auto": Try network first, fall back to local if not found
+    tensorrt_install_method: "local"
+
+    # TensorRT local repo URL (auto-constructed if using local method)
+    # Override this if you want to use a custom URL or local file path
+    tensorrt_local_repo_url: ""
     realvnc_version: "7.13.0"
     
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
@@ -504,30 +512,67 @@
     # ==========================================================
     # 12. TENSORRT
     # ==========================================================
-    - name: Install TensorRT 10.13 with version pinning
+    - name: Install TensorRT with version pinning
       block:
-        # Method 1: Local Repository (Recommended - guarantees version availability)
+        # Detect Ubuntu version and architecture
+        - name: Get Ubuntu codename
+          shell: . /etc/os-release && echo "$VERSION_CODENAME"
+          register: ubuntu_codename
+          changed_when: false
+
+        - name: Get system architecture
+          command: dpkg --print-architecture
+          register: system_arch
+          changed_when: false
+
+        - name: Construct TensorRT local repo URL automatically
+          set_fact:
+            tensorrt_auto_url: "https://developer.download.nvidia.com/compute/tensorrt/{{ tensorrt_version_full }}/local_installers/nv-tensorrt-local-repo-ubuntu{{ ansible_distribution_version | replace('.', '') }}-{{ tensorrt_version_full }}-cuda-{{ cuda_version_full }}_1.0-1_{{ system_arch.stdout }}.deb"
+
+        - name: Set final TensorRT URL
+          set_fact:
+            tensorrt_final_url: "{{ tensorrt_local_repo_url if tensorrt_local_repo_url != '' else tensorrt_auto_url }}"
+
+        - name: Display TensorRT installation plan
+          debug:
+            msg: |
+              TensorRT Installation Configuration:
+              - Method: {{ tensorrt_install_method }}
+              - Version: {{ tensorrt_version_full }}
+              - CUDA: {{ cuda_version_full }}
+              - Ubuntu: {{ ubuntu_codename.stdout }}
+              - Architecture: {{ system_arch.stdout }}
+              {% if tensorrt_install_method == 'local' %}
+              - Local repo URL: {{ tensorrt_final_url }}
+              {% endif %}
+
+        # Method 1: Local Repository
         - name: Install TensorRT from local repository
-          when: tensorrt_local_repo_url != ""
+          when: tensorrt_install_method == 'local' or tensorrt_install_method == 'auto'
           block:
             - name: Download TensorRT local repo package
               get_url:
-                url: "{{ tensorrt_local_repo_url }}"
+                url: "{{ tensorrt_final_url }}"
                 dest: /tmp/tensorrt-local-repo.deb
                 timeout: 300
+              register: tensorrt_download
+              failed_when: false
 
             - name: Install TensorRT local repo package
               apt:
                 deb: /tmp/tensorrt-local-repo.deb
+              when: tensorrt_download is succeeded
 
             - name: Copy TensorRT repo keyring
-              shell: cp /var/nv-tensorrt-local-repo-*/tensorrt-*-keyring.gpg /usr/share/keyrings/
-              args:
-                creates: /usr/share/keyrings/tensorrt-*-keyring.gpg
+              shell: cp /var/nv-tensorrt-local-repo-*/tensorrt-*-keyring.gpg /usr/share/keyrings/ 2>/dev/null || cp /var/nv-tensorrt-local-repo-*/*-keyring.gpg /usr/share/keyrings/
+              when: tensorrt_download is succeeded
+              register: keyring_copy
+              failed_when: false
 
             - name: Update apt cache for TensorRT local repo
               apt:
                 update_cache: yes
+              when: tensorrt_download is succeeded
 
             - name: Install TensorRT from local repo
               apt:
@@ -537,17 +582,19 @@
                   - python3-libnvinfer
                   - python3-libnvinfer-dev
                 state: present
+              when: tensorrt_download is succeeded
+              register: trt_local_install
 
-        # Method 2: Network Repository (Fallback - may not have old versions)
+        # Method 2: Network Repository (when local fails or method is "network")
         - name: Install TensorRT from network repository
-          when: tensorrt_local_repo_url == ""
+          when: (tensorrt_install_method == 'network') or (tensorrt_install_method == 'auto' and (tensorrt_download is failed or trt_local_install is failed))
           block:
             - name: Update apt cache for TensorRT
               apt:
                 update_cache: yes
 
             - name: Check available TensorRT versions in network repo
-              shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version }}" | head -1 | awk '{print $3}'
+              shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version_pattern }}" | head -1 | awk '{print $3}'
               register: available_trt_version
               failed_when: false
               changed_when: false
@@ -555,14 +602,15 @@
             - name: Fail if requested TensorRT version not available
               fail:
                 msg: |
-                  TensorRT {{ tensorrt_version }} not found in network repository!
+                  TensorRT {{ tensorrt_version_pattern }} not found in network repository!
 
                   When newer TensorRT versions are released, NVIDIA removes old versions from the network repo.
 
-                  SOLUTION: Download the TensorRT {{ tensorrt_version }} local repo package from:
-                  https://developer.nvidia.com/tensorrt
+                  SOLUTION: Set tensorrt_install_method to "local" or "auto" to use local repository.
+                  The playbook will automatically construct the correct URL:
+                  {{ tensorrt_final_url }}
 
-                  Then set tensorrt_local_repo_url variable to the download URL or local file path.
+                  Or download manually from: https://developer.nvidia.com/tensorrt
               when: available_trt_version.stdout == ''
 
             - name: Set TensorRT package version from network repo
@@ -617,10 +665,17 @@
             echo "Packages held (will NOT be upgraded by apt):" >> {{ log_file }}
             echo "{{ held_packages.stdout }}" >> {{ log_file }}
 
+        - name: Determine which method was used
+          set_fact:
+            trt_method_used: "{{ 'Local Repository' if (tensorrt_download is defined and tensorrt_download is succeeded) else 'Network Repository' }}"
+
         - debug:
             msg: |
-              ✅ TensorRT {{ tensorrt_version }} installed and pinned
-              Installation method: {{ 'Local Repository' if tensorrt_local_repo_url != '' else 'Network Repository' }}
+              ✅ TensorRT {{ tensorrt_version_full }} installed and pinned
+              Installation method: {{ trt_method_used }}
+              {% if trt_method_used == 'Local Repository' %}
+              Local repo URL: {{ tensorrt_final_url }}
+              {% endif %}
 
               Held packages (protected from apt upgrade):
               {{ held_packages.stdout_lines }}
