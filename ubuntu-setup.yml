@@ -15,6 +15,9 @@
     cuda_version_full: "13.0"
     tensorrt_version: "10.13.*"
     tensorrt_full_version: "10.13.*-1+cuda13.0"
+    # TensorRT local repo URL - download from https://developer.nvidia.com/tensorrt
+    # Set to empty string "" to use network repo (less reliable when old versions are removed)
+    tensorrt_local_repo_url: ""  # Example: "https://your-server.com/nv-tensorrt-local-repo-ubuntu2404-10.13.0-cuda-13.0_1.0-1_amd64.deb"
     realvnc_version: "7.13.0"
     
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
@@ -501,35 +504,84 @@
     # ==========================================================
     - name: Install TensorRT 10.13 with version pinning
       block:
-        - name: Update apt cache for TensorRT
-          apt:
-            update_cache: yes
+        # Method 1: Local Repository (Recommended - guarantees version availability)
+        - name: Install TensorRT from local repository
+          when: tensorrt_local_repo_url != ""
+          block:
+            - name: Download TensorRT local repo package
+              get_url:
+                url: "{{ tensorrt_local_repo_url }}"
+                dest: /tmp/tensorrt-local-repo.deb
+                timeout: 300
 
-        - name: Check available TensorRT versions
-          shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version }}" | head -1 | awk '{print $3}'
-          register: available_trt_version
-          failed_when: false
-          changed_when: false
+            - name: Install TensorRT local repo package
+              apt:
+                deb: /tmp/tensorrt-local-repo.deb
 
-        - name: Set TensorRT package version
-          set_fact:
-            trt_pkg_version: "{{ available_trt_version.stdout if available_trt_version.stdout != '' else tensorrt_full_version }}"
+            - name: Copy TensorRT repo keyring
+              shell: cp /var/nv-tensorrt-local-repo-*/tensorrt-*-keyring.gpg /usr/share/keyrings/
+              args:
+                creates: /usr/share/keyrings/tensorrt-*-keyring.gpg
 
-        - name: Install TensorRT packages with specific version
-          apt:
-            name:
-              - "tensorrt-dev={{ trt_pkg_version }}"
-              - "tensorrt-libs={{ trt_pkg_version }}"
-              - "libnvinfer10={{ trt_pkg_version }}"
-              - "libnvinfer-dev={{ trt_pkg_version }}"
-              - "libnvinfer-headers-dev={{ trt_pkg_version }}"
-              - "libnvinfer-plugin10={{ trt_pkg_version }}"
-              - "libnvonnxparsers10={{ trt_pkg_version }}"
-              - "python3-libnvinfer={{ trt_pkg_version }}"
-              - "python3-libnvinfer-dev={{ trt_pkg_version }}"
-            state: present
-            allow_downgrades: yes
-          register: trt_install
+            - name: Update apt cache for TensorRT local repo
+              apt:
+                update_cache: yes
+
+            - name: Install TensorRT from local repo
+              apt:
+                name:
+                  - tensorrt-dev
+                  - tensorrt-libs
+                  - python3-libnvinfer
+                  - python3-libnvinfer-dev
+                state: present
+
+        # Method 2: Network Repository (Fallback - may not have old versions)
+        - name: Install TensorRT from network repository
+          when: tensorrt_local_repo_url == ""
+          block:
+            - name: Update apt cache for TensorRT
+              apt:
+                update_cache: yes
+
+            - name: Check available TensorRT versions in network repo
+              shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version }}" | head -1 | awk '{print $3}'
+              register: available_trt_version
+              failed_when: false
+              changed_when: false
+
+            - name: Fail if requested TensorRT version not available
+              fail:
+                msg: |
+                  TensorRT {{ tensorrt_version }} not found in network repository!
+
+                  When newer TensorRT versions are released, NVIDIA removes old versions from the network repo.
+
+                  SOLUTION: Download the TensorRT {{ tensorrt_version }} local repo package from:
+                  https://developer.nvidia.com/tensorrt
+
+                  Then set tensorrt_local_repo_url variable to the download URL or local file path.
+              when: available_trt_version.stdout == ''
+
+            - name: Set TensorRT package version from network repo
+              set_fact:
+                trt_pkg_version: "{{ available_trt_version.stdout }}"
+
+            - name: Install TensorRT packages with specific version from network repo
+              apt:
+                name:
+                  - "tensorrt-dev={{ trt_pkg_version }}"
+                  - "tensorrt-libs={{ trt_pkg_version }}"
+                  - "libnvinfer10={{ trt_pkg_version }}"
+                  - "libnvinfer-dev={{ trt_pkg_version }}"
+                  - "libnvinfer-headers-dev={{ trt_pkg_version }}"
+                  - "libnvinfer-plugin10={{ trt_pkg_version }}"
+                  - "libnvonnxparsers10={{ trt_pkg_version }}"
+                  - "python3-libnvinfer={{ trt_pkg_version }}"
+                  - "python3-libnvinfer-dev={{ trt_pkg_version }}"
+                state: present
+                allow_downgrades: yes
+              register: trt_install
 
         - name: Hold TensorRT packages to prevent upgrades
           dpkg_selections:
@@ -566,49 +618,10 @@
         - debug:
             msg: |
               ✅ TensorRT {{ tensorrt_version }} installed and pinned
-              Version: {{ trt_pkg_version }}
+              Installation method: {{ 'Local Repository' if tensorrt_local_repo_url != '' else 'Network Repository' }}
 
               Held packages (protected from apt upgrade):
               {{ held_packages.stdout_lines }}
-
-      rescue:
-        - debug: msg="⚠️ TensorRT installation failed. Trying fallback..."
-
-        - name: Fallback - Install latest TensorRT without version pinning
-          apt:
-            name:
-              - tensorrt-dev
-              - tensorrt-libs
-              - python3-libnvinfer
-              - python3-libnvinfer-dev
-            state: present
-          register: trt_fallback
-
-        - name: Hold fallback TensorRT packages
-          dpkg_selections:
-            name: "{{ item }}"
-            selection: hold
-          loop:
-            - tensorrt-dev
-            - tensorrt-libs
-            - python3-libnvinfer
-            - python3-libnvinfer-dev
-          when: trt_fallback is succeeded
-
-        - name: Get held packages in fallback
-          shell: dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold || echo "No packages held"
-          register: fallback_held
-          changed_when: false
-
-        - debug:
-            msg: |
-              ⚠️ TensorRT installed but version {{ tensorrt_version }} not available
-              Using latest version and holding it to prevent upgrades
-              {{ fallback_held.stdout_lines }}
-
-        - shell: |
-            echo "⚠️ TensorRT installed but version {{ tensorrt_version }} not available. Using latest." >> {{ log_file }}
-            echo "Held packages: {{ fallback_held.stdout }}" >> {{ log_file }}
 
     - name: Log TensorRT installation
       shell: |
@@ -638,27 +651,26 @@
             state: directory
             mode: '0755'
 
-        - name: Download Docker GPG key
-          get_url:
-            url: https://download.docker.com/linux/ubuntu/gpg
-            dest: /tmp/docker.gpg
-            mode: '0644'
-
-        - name: Dearmor Docker GPG key
-          shell: gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg
+        - name: Download Docker GPG key directly to keyrings
+          shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
           args:
-            creates: /etc/apt/keyrings/docker.gpg
+            creates: /etc/apt/keyrings/docker.asc
 
         - name: Set permissions on Docker GPG key
           file:
-            path: /etc/apt/keyrings/docker.gpg
+            path: /etc/apt/keyrings/docker.asc
             mode: '0644'
 
-        - name: Add Docker repository
-          apt_repository:
-            repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable"
-            state: present
-            filename: docker
+        - name: Add Docker repository with dynamic architecture and codename
+          shell: |
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            tee /etc/apt/sources.list.d/docker.list > /dev/null
+          args:
+            creates: /etc/apt/sources.list.d/docker.list
+
+        - name: Update apt cache for Docker
+          apt:
             update_cache: yes
 
         - name: Install Docker packages
@@ -670,7 +682,6 @@
               - docker-buildx-plugin
               - docker-compose-plugin
             state: present
-            update_cache: yes
 
         - name: Add user to docker group
           user:

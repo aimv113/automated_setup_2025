@@ -56,17 +56,15 @@ auto_reboot_time: "03:00"
 
 ## Installation Compliance (see INSTALLATION_COMPARISON_REPORT.md)
 
-**✅ FULLY COMPLIANT (Follow Official Docs):**
-- **Tailscale** (lines 212-257): Uses official GPG key and repository list
-- **Visual Studio Code** (lines 286-321): Modern keyring location (`/usr/share/keyrings/`), no deprecated modules
-- **NVIDIA Driver** (lines 396-438): Uses `ubuntu-drivers install nvidia:580-server` (official Ubuntu method)
+**✅ FULLY COMPLIANT (Follow Official Docs or Better):**
+- **Tailscale** (lines 212-257): Official GPG key and repository list
+- **Docker** (lines 635-671): Dynamic architecture/codename detection, multi-platform ready
+- **Visual Studio Code** (lines 286-321): Modern keyring location, no deprecated modules
+- **NVIDIA Driver** (lines 396-438): Official `ubuntu-drivers install nvidia:580-server`
 - **CUDA Toolkit** (lines 440-449): Official NVIDIA keyring and repository
-- **NVIDIA Container Toolkit** (lines 643-677): Uses `nvidia-ctk runtime configure --runtime=docker` (official NVIDIA method)
+- **TensorRT** (lines 505-625): Dual method (local repo or network repo) with fail-safe, `dpkg hold` for version locking
+- **NVIDIA Container Toolkit** (lines 680-714): Official `nvidia-ctk runtime configure --runtime=docker`
 - **Python environment**: Standard Ubuntu packages and venv
-
-**⚠️ ACCEPTABLE DEVIATIONS (Low Priority):**
-- **Docker**: Hardcodes arch/codename (only matters for multi-arch/multi-version support)
-- **TensorRT**: Uses network repo instead of local repo (acceptable for automation, includes version pinning)
 
 **All official documentation links available in INSTALLATION_COMPARISON_REPORT.md**
 
