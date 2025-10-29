@@ -7,6 +7,9 @@
 ```bash
 sudo apt update
 sudo apt install openssh-server ansible git -y
+git clone https://github.com/aimv113/automated_setup_2025.git
+cd automated_setup_2025/
+ansible-playbook ubuntu-setup.yml -K
 ```
 
 ### 2. Configure SSH Service
@@ -28,16 +31,6 @@ SSH into the machine:
 ssh finn@<ip-address>
 ```
 
-Clone the repository:
-```bash
-git clone https://github.com/aimv113/automated_setup_2025.git
-cd automated_setup_2025/
-```
-
-Run the Ansible playbook:
-```bash
-ansible-playbook ubuntu-setup.yml -K
-```
 
 **Note:** The playbook will prompt you to create a Healthchecks.io URL. You can:
 - Create a free account at https://healthchecks.io and paste the ping URL when prompted
