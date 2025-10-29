@@ -1,29 +1,59 @@
-Install Ubuntu 24.04.3
+# Automated Setup 2025
 
+## Initial Ubuntu 24.04.3 Setup
+
+### 1. Update System and Install Required Packages
+
+```bash
 sudo apt update
-
 sudo apt install openssh-server ansible git -y
+```
 
+### 2. Configure SSH Service
+
+```bash
 sudo systemctl start ssh
-
 sudo systemctl enable ssh
+```
 
+### 3. Clone Repository and Run Setup
 
+Get your IP address:
+```bash
 hostname -I
-ssh finn@ip address
+```
 
+SSH into the machine:
+```bash
+ssh finn@<ip-address>
+```
+
+Clone the repository:
+```bash
 git clone https://github.com/aimv113/automated_setup_2025.git
-
 cd automated_setup_2025/
+```
 
-ansible-playbook ubuntu-setup.yml -K
+Run the Ansible playbook:
+```bash
+ansible-playbook ubuntu-setup.yml -K -vv
+```
 
-ssh-copy-id -p 33412 finn@ip address
+### 4. Copy SSH Keys
 
+```bash
+ssh-copy-id -p 33412 finn@<ip-address>
+```
 
+---
 
-fix for VM's
-# Replace the X11 config with a more restrictive one
+## VM-Specific Configuration
+
+### Fix for Virtual Machines (Display Issues)
+
+Replace the X11 config with a more restrictive one:
+
+```bash
 sudo bash -c 'cat > /etc/X11/xorg.conf.d/10-qxl-display.conf << "EOF"
 Section "ServerFlags"
     Option "AutoAddGPU" "false"
@@ -45,19 +75,38 @@ Section "Screen"
     Device "QXL"
 EndSection
 EOF'
+```
 
-# Also remove any other X11 configs that might interfere
+Remove any other X11 configs that might interfere:
+```bash
 sudo rm -f /etc/X11/xorg.conf.d/10-nvidia.conf 2>/dev/null
+```
 
-# Restart GDM
+Restart GDM:
+```bash
 sudo systemctl restart gdm3
+```
 
+---
 
-For TensorRT
+## TensorRT Setup
+
+### Install TensorRT
+
+Check if TensorRT is available:
+```bash
 apt show tensorrt
+```
+
+Install TensorRT:
+```bash
 sudo apt-get install tensorrt
+```
 
+### Install Python Packages (in virtual environment)
 
-(in venv) pip install ultralytics nvidia-tensorrt onnxruntime-gpu
+```bash
+pip install ultralytics nvidia-tensorrt onnxruntime-gpu
+```
 
 
