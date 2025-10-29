@@ -36,7 +36,7 @@ cd automated_setup_2025/
 
 Run the Ansible playbook:
 ```bash
-ansible-playbook ubuntu-setup.yml -K -vv
+ansible-playbook ubuntu-setup.yml -K
 ```
 
 **Note:** The playbook will prompt you to create a Healthchecks.io URL. You can:
