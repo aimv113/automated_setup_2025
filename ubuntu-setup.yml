@@ -850,18 +850,18 @@
           [Service]
           Type=oneshot
           ExecStart=/usr/local/bin/healthcheck-ping.sh
-    - name: Create systemd timer for healthcheck (every 30 s)
+    - name: Create systemd timer for healthcheck (every 5 minutes)
       copy:
         dest: /etc/systemd/system/healthcheck.timer
         mode: '0644'
         content: |
           [Unit]
-          Description=Run healthcheck ping every 30 seconds
+          Description=Run healthcheck ping every 5 minutes
 
           [Timer]
-          OnBootSec=15s
-          OnUnitActiveSec=30s
-          AccuracySec=5s
+          OnBootSec=1min
+          OnUnitActiveSec=5min
+          AccuracySec=30s
 
           [Install]
           WantedBy=timers.target
@@ -875,10 +875,10 @@
         echo "===========================================================" >> {{ log_file }}
         echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Healthcheck service active (ping every 30 s)." >> {{ log_file }}
+        echo "✅ Healthcheck service active (ping every 5 min)." >> {{ log_file }}
         echo "" >> {{ log_file }}
-    
-    - debug: msg="✅ Healthcheck service active (ping every 30 s)."
+
+    - debug: msg="✅ Healthcheck service active (ping every 5 min)."
 
     # ==========================================================
     # 16. AUTO_TEST PYTHON ENVIRONMENT SETUP
@@ -979,7 +979,46 @@
           To activate: source ~/code/auto_test/activate.sh
 
     # ==========================================================
-    # 17. FINAL MESSAGE
+    # 17. REBOOT NOTIFICATION
+    # ==========================================================
+    - name: Check if reboot is required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Set reboot requirement fact
+      set_fact:
+        needs_reboot: "{{ reboot_required_file.stat.exists or nvidia_driver_install.changed }}"
+
+    - name: Log reboot requirement
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "17. REBOOT NOTIFICATION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        {% if needs_reboot %}
+        echo "⚠️  REBOOT REQUIRED" >> {{ log_file }}
+        echo "NVIDIA driver and/or kernel modules have been updated." >> {{ log_file }}
+        echo "Please reboot to activate all changes: sudo reboot" >> {{ log_file }}
+        {% else %}
+        echo "✅ No reboot required at this time." >> {{ log_file }}
+        {% endif %}
+        echo "" >> {{ log_file }}
+
+    - name: Display reboot notification
+      debug:
+        msg: |
+          ⚠️  ============================================
+          ⚠️  REBOOT REQUIRED
+          ⚠️  ============================================
+          NVIDIA driver and/or kernel modules have been updated.
+          The system needs to be rebooted to activate all changes.
+
+          Please reboot when convenient:
+            sudo reboot
+      when: needs_reboot
+
+    # ==========================================================
+    # 18. FINAL MESSAGE
     # ==========================================================
     - name: Write final summary to log
       shell: |
@@ -990,12 +1029,16 @@
         echo "- SSH on port {{ ssh_port }} (key-only)" >> {{ log_file }}
         echo "- Docker + NVIDIA runtime ready" >> {{ log_file }}
         echo "- Tailscale and RealVNC installed" >> {{ log_file }}
-        echo "- Healthcheck active (every 30 s)" >> {{ log_file }}
+        echo "- Healthcheck active (every 5 min)" >> {{ log_file }}
         echo "- Auto reboot daily at {{ auto_reboot_time }}" >> {{ log_file }}
         echo "- Auto test environment: ~/code/auto_test (Python 3.12 venv)" >> {{ log_file }}
         echo "===================================================================" >> {{ log_file }}
         echo "Completed at: $(date)" >> {{ log_file }}
         echo "Log file: {{ log_file }}" >> {{ log_file }}
+        {% if needs_reboot %}
+        echo "" >> {{ log_file }}
+        echo "⚠️  Please reboot the system: sudo reboot" >> {{ log_file }}
+        {% endif %}
 
     - debug:
         msg: |
@@ -1006,12 +1049,16 @@
           - SSH on port {{ ssh_port }} (key-only)
           - Docker + NVIDIA runtime ready
           - Tailscale and RealVNC installed
-          - Healthcheck active (every 30 s)
+          - Healthcheck active (every 5 min)
           - Auto reboot daily at {{ auto_reboot_time }}
           - Auto test environment: ~/code/auto_test (Python 3.12 venv)
 
           Activate venv: source ~/code/auto_test/activate.sh
           Log file saved to: {{ log_file }}
+          {% if needs_reboot %}
+
+          ⚠️  Please reboot the system: sudo reboot
+          {% endif %}
           ===================================================================
 
   handlers:

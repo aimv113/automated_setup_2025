@@ -16,10 +16,10 @@ Test idempotency by running twice (second run should show no changes).
 
 ## Architecture
 
-### Playbook Structure (17 Sections)
+### Playbook Structure (18 Sections)
 
-Sections 0-16 plus final message in `ubuntu-setup.yml` (1027 lines):
-0. Log Init → 1. System Update → 2. Tools → 3. SSH (port 33412) → 4. UFW → 5. Auto-Reboot → 6. Tailscale → 7. RealVNC → 8. VS Code → 9. Display/VM Detection → 10. NVIDIA Driver → 11. CUDA → 12. TensorRT → 13. Docker+NVIDIA → 14. Python → 15. Healthchecks → 16. ML Environment → 17. Final Message
+Sections 0-16 plus reboot check and final message in `ubuntu-setup.yml` (1074 lines):
+0. Log Init → 1. System Update → 2. Tools → 3. SSH (port 33412) → 4. UFW → 5. Auto-Reboot → 6. Tailscale → 7. RealVNC → 8. VS Code → 9. Display/VM Detection → 10. NVIDIA Driver → 11. CUDA → 12. TensorRT → 13. Docker+NVIDIA → 14. Python → 15. Healthchecks (5min) → 16. ML Environment → 17. Reboot Check → 18. Final Message
 
 ### Critical Design Patterns
 
@@ -105,6 +105,9 @@ systemctl list-timers  # Should show auto-reboot and healthcheck
 
 # Check TensorRT pinning
 dpkg --get-selections | grep hold  # Should show tensorrt packages
+
+# Check if reboot is needed
+[ -f /var/run/reboot-required ] && echo "Reboot required" || echo "No reboot needed"
 ```
 
 ## Modifying the Playbook
@@ -139,12 +142,6 @@ systemd-detect-virt  # "none" = bare metal, else shows VM type (qemu, kvm, etc.)
 ansible-playbook ubuntu-setup.yml -K -vv
 ```
 
-## Key Files and Line Ranges
+## Key Line Ranges
 
-- **ubuntu-setup.yml**: Main playbook (1027 lines total)
-  - Variables: 7-33
-  - VM Detection: 344-427
-  - NVIDIA Driver: 430-475
-  - CUDA: 477-510
-  - TensorRT: 513-689
-  - Docker: 691-803
+- **ubuntu-setup.yml** (1074 lines): Variables 7-33, VM Detection 344-427, NVIDIA Driver 430-475, CUDA 477-510, TensorRT 513-689, Docker 691-803, Healthchecks 832-881, Reboot Check 982-1018

@@ -112,9 +112,9 @@ This playbook configures a complete Ubuntu 24.04 system with development tools, 
 
 ### 15. Healthchecks.io Service
 - Systemd service for healthcheck pings
-- Systemd timer (every 30 seconds)
+- Systemd timer (every 5 minutes)
 - curl-based ping script
-- Automatic boot startup with 15-second delay
+- Automatic boot startup with 1-minute delay
 - Configurable healthcheck URL
 
 ### 16. Auto Test Python Environment
@@ -129,6 +129,13 @@ This playbook configures a complete Ubuntu 24.04 system with development tools, 
   - onnxruntime-gpu
 - **CUDA Verification**: Automated check for GPU availability
 - **Activation Script**: `~/code/auto_test/activate.sh` for easy environment activation
+
+### 17. Reboot Notification
+- Automatic detection of reboot requirements
+- Checks `/var/run/reboot-required` file
+- Monitors NVIDIA driver installation status
+- Displays prominent warning if reboot needed
+- Logs reboot requirement to setup log
 
 ## Configuration Variables
 
@@ -153,10 +160,11 @@ The playbook uses these configurable variables (set at top of playbook):
 
 ## Post-Installation Manual Steps
 
-1. **Tailscale**: Run `sudo tailscale up` to authenticate
-2. **RealVNC**: Configure VNC server settings and authentication
-3. **Auto Test Environment**: Activate with `source ~/code/auto_test/activate.sh`
-4. **Docker**: Log out and back in for docker group membership to take effect
+1. **Reboot**: If prompted, reboot the system to activate NVIDIA driver and kernel modules
+2. **Tailscale**: Run `sudo tailscale up` to authenticate
+3. **RealVNC**: Configure VNC server settings and authentication
+4. **Auto Test Environment**: Activate with `source ~/code/auto_test/activate.sh`
+5. **Docker**: Log out and back in for docker group membership to take effect
 
 ## System Requirements
 

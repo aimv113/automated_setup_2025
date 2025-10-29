@@ -58,7 +58,7 @@ The playbook automatically installs and configures:
 - **Tailscale** and **RealVNC Server**
 - **Python 3.12** virtual environment at `~/code/auto_test`
 - Daily system reboot at 3:00 AM
-- Healthchecks.io monitoring (30s interval)
+- Healthchecks.io monitoring (5 min interval)
 - SSH on custom port 33412
 - **Automatic VM detection** and display fixes (if running in a VM)
 
