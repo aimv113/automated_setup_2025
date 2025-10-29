@@ -47,66 +47,107 @@ ssh-copy-id -p 33412 finn@<ip-address>
 
 ---
 
-## VM-Specific Configuration
+## Post-Installation Information
 
-### Fix for Virtual Machines (Display Issues)
+### What Gets Installed
 
-Replace the X11 config with a more restrictive one:
+The playbook automatically installs and configures:
+- **NVIDIA Driver 580** with CUDA 13.0
+- **TensorRT 10.13** (version-pinned and held from upgrades)
+- **Docker** with NVIDIA Container Toolkit
+- **Tailscale** and **RealVNC Server**
+- **Python 3.12** virtual environment at `~/code/auto_test`
+- Daily system reboot at 3:00 AM
+- Healthchecks.io monitoring (30s interval)
+- SSH on custom port 33412
+- **Automatic VM detection** and display fixes (if running in a VM)
 
+### Python Virtual Environment
+
+The setup creates a ready-to-use Python environment at `~/code/auto_test` with:
+- Python 3.12
+- PyTorch with CUDA support
+- Ultralytics (YOLO)
+- TensorRT Python bindings
+- ONNX Runtime GPU
+
+Activate the environment:
 ```bash
-sudo bash -c 'cat > /etc/X11/xorg.conf.d/10-qxl-display.conf << "EOF"
-Section "ServerFlags"
-    Option "AutoAddGPU" "false"
-EndSection
-
-Section "ServerLayout"
-    Identifier "Layout0"
-    Screen 0 "Screen0"
-EndSection
-
-Section "Device"
-    Identifier "QXL"
-    Driver "qxl"
-    BusID "PCI:0:1:0"
-EndSection
-
-Section "Screen"
-    Identifier "Screen0"
-    Device "QXL"
-EndSection
-EOF'
+source ~/code/auto_test/activate.sh
 ```
 
-Remove any other X11 configs that might interfere:
+### Virtual Machine Detection
+
+The playbook automatically detects if it's running in a virtual machine using `systemd-detect-virt` and applies appropriate fixes.
+
+**Supported virtualization platforms:**
+- QEMU/KVM
+- VMware
+- VirtualBox
+- Hyper-V
+- And others detected by systemd
+
+**Automatic VM fixes applied:**
+- QXL display driver configuration
+- Disables AutoAddGPU to prevent conflicts
+- Removes conflicting NVIDIA X11 configs
+- Optimizes display server for VM environments
+
+**Manual VM detection check:**
 ```bash
-sudo rm -f /etc/X11/xorg.conf.d/10-nvidia.conf 2>/dev/null
+systemd-detect-virt
 ```
 
-Restart GDM:
-```bash
-sudo systemctl restart gdm3
-```
+If the command returns anything other than `none`, you're running in a VM and the display fixes will be automatically applied.
 
 ---
 
-## TensorRT Setup
+## Package Management
 
-### Install TensorRT
+### TensorRT Version Pinning
 
-Check if TensorRT is available:
+TensorRT 10.13 is automatically pinned to prevent accidental upgrades during `apt update` or `apt upgrade`.
+
+**Held packages:**
+- `tensorrt-dev`
+- `tensorrt-libs`
+- `libnvinfer10`
+- `libnvinfer-dev`
+- `libnvinfer-headers-dev`
+- `libnvinfer-plugin10`
+- `libnvonnxparsers10`
+- `python3-libnvinfer`
+- `python3-libnvinfer-dev`
+
+### Check Held Packages
+
+View all held packages:
 ```bash
-apt show tensorrt
+dpkg --get-selections | grep hold
 ```
 
-Install TensorRT:
+Check TensorRT-specific packages:
 ```bash
-sudo apt-get install tensorrt
+dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold
 ```
 
-### Install Python Packages (in virtual environment)
+### Manually Upgrade TensorRT (if needed)
+
+If you need to upgrade TensorRT in the future:
 
 ```bash
-pip install ultralytics nvidia-tensorrt onnxruntime-gpu
+# Unhold packages
+sudo apt-mark unhold tensorrt-dev tensorrt-libs libnvinfer10 libnvinfer-dev \
+  libnvinfer-headers-dev libnvinfer-plugin10 libnvonnxparsers10 \
+  python3-libnvinfer python3-libnvinfer-dev
+
+# Update and upgrade
+sudo apt update && sudo apt upgrade
+
+# Hold packages again at new version
+sudo apt-mark hold tensorrt-dev tensorrt-libs libnvinfer10 libnvinfer-dev \
+  libnvinfer-headers-dev libnvinfer-plugin10 libnvonnxparsers10 \
+  python3-libnvinfer python3-libnvinfer-dev
 ```
 
 

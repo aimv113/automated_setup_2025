@@ -279,8 +279,19 @@
         echo "" >> {{ log_file }}
 
     # ==========================================================
-    # 9. DISPLAY SERVER (XORG)
+    # 9. DISPLAY SERVER (XORG) & VM DETECTION
     # ==========================================================
+    - name: Detect if running in a virtual machine
+      shell: systemd-detect-virt
+      register: virt_detect
+      failed_when: false
+      changed_when: false
+
+    - name: Set VM detection fact
+      set_fact:
+        is_virtual_machine: "{{ virt_detect.rc == 0 and virt_detect.stdout != 'none' }}"
+        virtualization_type: "{{ virt_detect.stdout | default('none') }}"
+
     - name: Disable Wayland and force Xorg
       lineinfile:
         path: /etc/gdm3/custom.conf
@@ -290,16 +301,68 @@
         backup: yes
       notify: restart gdm3
       register: xorg_config
-    
+
+    - name: Apply VM-specific display fix (QXL)
+      block:
+        - name: Create X11 config directory
+          file:
+            path: /etc/X11/xorg.conf.d
+            state: directory
+            mode: '0755'
+
+        - name: Configure QXL display for VMs
+          copy:
+            dest: /etc/X11/xorg.conf.d/10-qxl-display.conf
+            mode: '0644'
+            content: |
+              Section "ServerFlags"
+                  Option "AutoAddGPU" "false"
+              EndSection
+
+              Section "ServerLayout"
+                  Identifier "Layout0"
+                  Screen 0 "Screen0"
+              EndSection
+
+              Section "Device"
+                  Identifier "QXL"
+                  Driver "qxl"
+                  BusID "PCI:0:1:0"
+              EndSection
+
+              Section "Screen"
+                  Identifier "Screen0"
+                  Device "QXL"
+              EndSection
+          notify: restart gdm3
+
+        - name: Remove conflicting NVIDIA X11 config
+          file:
+            path: /etc/X11/xorg.conf.d/10-nvidia.conf
+            state: absent
+          notify: restart gdm3
+
+        - shell: |
+            echo "✅ VM detected ({{ virtualization_type }}): Applied QXL display fix" >> {{ log_file }}
+
+        - debug:
+            msg: "✅ VM detected ({{ virtualization_type }}): Applied QXL display fix"
+
+      when: is_virtual_machine
+
     - name: Log display server configuration
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "9. DISPLAY SERVER (XORG) - $(date)" >> {{ log_file }}
+        echo "9. DISPLAY SERVER (XORG) & VM DETECTION - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
+        echo "System type: {{ 'Virtual Machine (' + virtualization_type + ')' if is_virtual_machine else 'Physical/Bare Metal' }}" >> {{ log_file }}
         echo "✅ Display configured for Xorg (Wayland disabled)." >> {{ log_file }}
         echo "" >> {{ log_file }}
-    
-    - debug: msg="✅ Display configured for Xorg (Wayland disabled)."
+
+    - debug:
+        msg: |
+          ✅ Display configured for Xorg (Wayland disabled)
+          System: {{ 'Virtual Machine (' + virtualization_type + ')' if is_virtual_machine else 'Physical/Bare Metal' }}
 
     # ==========================================================
     # 10. NVIDIA DRIVER & GRUB CONFIG
@@ -404,7 +467,7 @@
             allow_downgrades: yes
           register: trt_install
 
-        - name: Hold TensorRT packages at current version
+        - name: Hold TensorRT packages to prevent upgrades
           dpkg_selections:
             name: "{{ item }}"
             selection: hold
@@ -418,7 +481,12 @@
             - libnvonnxparsers10
             - python3-libnvinfer
             - python3-libnvinfer-dev
-          when: trt_install.changed
+
+        - name: Verify packages are held
+          shell: dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold
+          register: held_packages
+          changed_when: false
+          failed_when: held_packages.rc != 0
 
         - name: Verify installed TensorRT version
           shell: dpkg -l | grep -E "(tensorrt|libnvinfer)" | grep -v "^rc"
@@ -427,12 +495,17 @@
 
         - shell: |
             echo "{{ trt_ver.stdout }}" >> {{ log_file }}
-            echo "TensorRT packages held at version {{ trt_pkg_version }}" >> {{ log_file }}
+            echo "" >> {{ log_file }}
+            echo "Packages held (will NOT be upgraded by apt):" >> {{ log_file }}
+            echo "{{ held_packages.stdout }}" >> {{ log_file }}
 
         - debug:
             msg: |
               ✅ TensorRT {{ tensorrt_version }} installed and pinned
               Version: {{ trt_pkg_version }}
+
+              Held packages (protected from apt upgrade):
+              {{ held_packages.stdout_lines }}
 
       rescue:
         - debug: msg="⚠️ TensorRT installation failed. Trying fallback..."
@@ -447,8 +520,31 @@
             state: present
           register: trt_fallback
 
-        - debug: msg="⚠️ TensorRT installed but version pinning failed. Using latest available version."
-        - shell: echo "⚠️ TensorRT installed but version {{ tensorrt_version }} not available. Using latest." >> {{ log_file }}
+        - name: Hold fallback TensorRT packages
+          dpkg_selections:
+            name: "{{ item }}"
+            selection: hold
+          loop:
+            - tensorrt-dev
+            - tensorrt-libs
+            - python3-libnvinfer
+            - python3-libnvinfer-dev
+          when: trt_fallback is succeeded
+
+        - name: Get held packages in fallback
+          shell: dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold || echo "No packages held"
+          register: fallback_held
+          changed_when: false
+
+        - debug:
+            msg: |
+              ⚠️ TensorRT installed but version {{ tensorrt_version }} not available
+              Using latest version and holding it to prevent upgrades
+              {{ fallback_held.stdout_lines }}
+
+        - shell: |
+            echo "⚠️ TensorRT installed but version {{ tensorrt_version }} not available. Using latest." >> {{ log_file }}
+            echo "Held packages: {{ fallback_held.stdout }}" >> {{ log_file }}
 
     - name: Log TensorRT installation
       shell: |
