@@ -211,13 +211,39 @@
     # ==========================================================
     - name: Setup Tailscale repository and install
       block:
-        - apt_key: { url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg, state: present }
-        - apt_repository:
-            repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
-            state: present
+        - name: Create keyrings directory for Tailscale
+          file:
+            path: /usr/share/keyrings
+            state: directory
+            mode: '0755'
+
+        - name: Download Tailscale GPG key
+          get_url:
+            url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+            dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+            mode: '0644'
+
+        - name: Download Tailscale repository list
+          get_url:
+            url: https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list
+            dest: /etc/apt/sources.list.d/tailscale.list
+            mode: '0644'
+
+        - name: Update apt cache for Tailscale
+          apt:
             update_cache: yes
-        - apt: { name: tailscale, state: present }
-        - systemd: { name: tailscaled, enabled: yes, state: started }
+
+        - name: Install Tailscale
+          apt:
+            name: tailscale
+            state: present
+
+        - name: Enable and start tailscaled service
+          systemd:
+            name: tailscaled
+            enabled: yes
+            state: started
+
         - shell: echo "✅ Tailscale installed. Run 'sudo tailscale up' to authenticate." >> {{ log_file }}
       rescue:
         - debug: msg="⚠️ Tailscale repo or install failed."
