@@ -110,12 +110,13 @@ This playbook configures a complete Ubuntu 24.04 system with development tools, 
 - venv (virtual environment support)
 - python3-dev (development headers)
 
-### 15. Healthchecks.io Service
+### 15. Healthchecks.io Service (Optional)
+- **Interactive Setup**: Prompts user to create and paste healthchecks.io URL
+- Can be skipped by pressing Enter at prompt
 - Systemd service for healthcheck pings
 - Systemd timer (every 5 minutes)
 - curl-based ping script
 - Automatic boot startup with 1-minute delay
-- Configurable healthcheck URL
 
 ### 16. Auto Test Python Environment
 - **Directory**: `~/code/auto_test`
@@ -143,8 +144,8 @@ The playbook uses these configurable variables (set at top of playbook):
 
 - `ssh_port`: SSH port number (default: 33412)
 - `ssh_user`: Username for SSH and Docker group
-- `healthchecks_url`: Healthchecks.io ping endpoint
-- `auto_reboot_time`: Daily reboot time in HH:MM format (default: "03:00")
+- ~~`healthchecks_url`~~: Removed - now prompted interactively during playbook run
+- `auto_reboot_time`: Daily reboot time in HH:MM format (default: "06:00")
 - `nvidia_driver_version`: NVIDIA driver version (default: "580")
 - `cuda_version`: CUDA version short format (default: "13-0")
 - `cuda_version_full`: CUDA version full format (default: "13.0")

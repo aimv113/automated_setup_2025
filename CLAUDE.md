@@ -12,14 +12,16 @@ Single Ansible playbook (`ubuntu-setup.yml`) for automated Ubuntu 24.04 setup wi
 ansible-playbook ubuntu-setup.yml -K -vv  # -K=sudo prompt, -vv=verbose
 ```
 
+**Interactive Prompt:** On first run, playbook prompts for Healthchecks.io URL (optional - can skip by pressing Enter).
+
 Test idempotency by running twice (second run should show no changes).
 
 ## Architecture
 
-### Playbook Structure (18 Sections)
+### Playbook Structure (19 Sections)
 
-Sections 0-16 plus reboot check and final message in `ubuntu-setup.yml` (1074 lines):
-0. Log Init → 1. System Update → 2. Tools → 3. SSH (port 33412) → 4. UFW → 5. Auto-Reboot → 6. Tailscale → 7. RealVNC → 8. VS Code → 9. Display/VM Detection → 10. NVIDIA Driver → 11. CUDA → 12. TensorRT → 13. Docker+NVIDIA → 14. Python → 15. Healthchecks (5min) → 16. ML Environment → 17. Reboot Check → 18. Final Message
+Interactive healthcheck prompt + sections 1-16 + reboot check + final message in `ubuntu-setup.yml` (1130 lines):
+0. Healthcheck Prompt → 1. Log Init → 2. System Update → 3. Tools → 4. SSH (port 33412) → 5. UFW → 6. Auto-Reboot → 7. Tailscale → 8. RealVNC → 9. VS Code → 10. Display/VM Detection → 11. NVIDIA Driver → 12. CUDA → 13. TensorRT → 14. Docker+NVIDIA → 15. Python → 16. Healthchecks (5min, optional) → 17. ML Environment → 18. Reboot Check → 19. Final Message
 
 ### Critical Design Patterns
 
@@ -44,13 +46,13 @@ Every section writes to `/var/log/ansible-ubuntu-setup-<timestamp>.log` (created
 **4. Error Handling**
 Non-critical sections use `block/rescue` (Tailscale, RealVNC, VS Code, CUDA, TensorRT, Docker). Critical sections (system update, NVIDIA driver) fail entire playbook.
 
-### Configuration Variables (Lines 7-33)
+### Configuration Variables (Lines 7-10, 12-30)
 
 ```yaml
 ssh_port: 33412
 ssh_user: "{{ ansible_env.USER }}"
-healthchecks_url: "https://hc-ping.com/..."
-auto_reboot_time: "03:00"
+auto_reboot_time: "06:00"
+# healthchecks_url - Prompted interactively during run
 
 nvidia_driver_version: "580"
 cuda_version: "13-0"              # Short format for apt packages

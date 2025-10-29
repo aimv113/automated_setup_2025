@@ -39,6 +39,10 @@ Run the Ansible playbook:
 ansible-playbook ubuntu-setup.yml -K -vv
 ```
 
+**Note:** The playbook will prompt you to create a Healthchecks.io URL. You can:
+- Create a free account at https://healthchecks.io and paste the ping URL when prompted
+- Press Enter to skip healthcheck monitoring
+
 ### 4. Copy SSH Keys
 
 ```bash
@@ -57,8 +61,8 @@ The playbook automatically installs and configures:
 - **Docker** with NVIDIA Container Toolkit
 - **Tailscale** and **RealVNC Server**
 - **Python 3.12** virtual environment at `~/code/auto_test`
-- Daily system reboot at 3:00 AM
-- Healthchecks.io monitoring (5 min interval)
+- Daily system reboot at 6:00 AM
+- Healthchecks.io monitoring (5 min interval, optional)
 - SSH on custom port 33412
 - **Automatic VM detection** and display fixes (if running in a VM)
 

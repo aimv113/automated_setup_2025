@@ -7,8 +7,7 @@
   vars:
     ssh_port: 33412
     ssh_user: "{{ ansible_env.USER }}"
-    healthchecks_url: "https://hc-ping.com/4020ae5f-3d0c-4944-bb01-1bbacb496d38"
-    auto_reboot_time: "03:00"  # 3 AM daily reboot
+    auto_reboot_time: "06:00"  # 6 AM daily reboot
 
     nvidia_driver_version: "580"
     cuda_version: "13-0"
@@ -35,7 +34,40 @@
   tasks:
 
     # ==========================================================
-    # 0. INITIALIZE LOG FILE
+    # 0. PROMPT FOR HEALTHCHECKS URL
+    # ==========================================================
+    - name: Prompt for Healthchecks.io URL
+      pause:
+        prompt: |
+
+          ============================================================
+          HEALTHCHECKS.IO SETUP
+          ============================================================
+
+          Please create a healthcheck at https://healthchecks.io
+
+          Steps:
+          1. Go to https://healthchecks.io and create a free account
+          2. Create a new check with name: "{{ ansible_hostname }}"
+          3. Set the period to 10 minutes (allows 5 min pings + buffer)
+          4. Copy the ping URL (looks like: https://hc-ping.com/YOUR-UUID-HERE)
+
+          Paste your Healthchecks.io ping URL (or press Enter to skip)
+      register: healthchecks_prompt
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL from user input or default
+      set_fact:
+        healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL if already defined
+      set_fact:
+        healthchecks_url: "{{ healthchecks_url }}"
+      when: healthchecks_url is defined
+
+    # ==========================================================
+    # 1. INITIALIZE LOG FILE
     # ==========================================================
     - name: Create log directory
       file:
@@ -831,54 +863,70 @@
     # ==========================================================
     # 15. HEALTHCHECKS.IO SERVICE
     # ==========================================================
-    - name: Create healthcheck ping script
-      copy:
-        dest: /usr/local/bin/healthcheck-ping.sh
-        mode: '0755'
-        content: |
-          #!/bin/bash
-          set -e
-          curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}" || echo "Healthcheck failed $(date)"
-    - name: Create systemd service for healthcheck
-      copy:
-        dest: /etc/systemd/system/healthcheck.service
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Healthchecks.io ping
+    - name: Setup Healthchecks.io service
+      block:
+        - name: Create healthcheck ping script
+          copy:
+            dest: /usr/local/bin/healthcheck-ping.sh
+            mode: '0755'
+            content: |
+              #!/bin/bash
+              set -e
+              curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}" || echo "Healthcheck failed $(date)"
+        - name: Create systemd service for healthcheck
+          copy:
+            dest: /etc/systemd/system/healthcheck.service
+            mode: '0644'
+            content: |
+              [Unit]
+              Description=Healthchecks.io ping
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/local/bin/healthcheck-ping.sh
-    - name: Create systemd timer for healthcheck (every 5 minutes)
-      copy:
-        dest: /etc/systemd/system/healthcheck.timer
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Run healthcheck ping every 5 minutes
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/local/bin/healthcheck-ping.sh
+        - name: Create systemd timer for healthcheck (every 5 minutes)
+          copy:
+            dest: /etc/systemd/system/healthcheck.timer
+            mode: '0644'
+            content: |
+              [Unit]
+              Description=Run healthcheck ping every 5 minutes
 
-          [Timer]
-          OnBootSec=1min
-          OnUnitActiveSec=5min
-          AccuracySec=30s
+              [Timer]
+              OnBootSec=1min
+              OnUnitActiveSec=5min
+              AccuracySec=30s
 
-          [Install]
-          WantedBy=timers.target
-      notify: reload systemd
-    - name: Enable and start healthcheck timer
-      systemd: { name: healthcheck.timer, enabled: yes, state: started }
-      register: healthcheck_timer
-    
-    - name: Log healthcheck configuration
-      shell: |
-        echo "===========================================================" >> {{ log_file }}
-        echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
-        echo "===========================================================" >> {{ log_file }}
-        echo "✅ Healthcheck service active (ping every 5 min)." >> {{ log_file }}
-        echo "" >> {{ log_file }}
+              [Install]
+              WantedBy=timers.target
+          notify: reload systemd
+        - name: Enable and start healthcheck timer
+          systemd: { name: healthcheck.timer, enabled: yes, state: started }
+          register: healthcheck_timer
 
-    - debug: msg="✅ Healthcheck service active (ping every 5 min)."
+        - name: Log healthcheck configuration
+          shell: |
+            echo "===========================================================" >> {{ log_file }}
+            echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
+            echo "===========================================================" >> {{ log_file }}
+            echo "✅ Healthcheck service active (ping every 5 min)." >> {{ log_file }}
+            echo "URL: {{ healthchecks_url }}" >> {{ log_file }}
+            echo "" >> {{ log_file }}
+
+        - debug: msg="✅ Healthcheck service active (ping every 5 min) - {{ healthchecks_url }}"
+      when: healthchecks_url != 'SKIPPED'
+
+    - name: Log healthcheck skipped
+      block:
+        - shell: |
+            echo "===========================================================" >> {{ log_file }}
+            echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
+            echo "===========================================================" >> {{ log_file }}
+            echo "⚠️  Healthcheck service skipped (no URL provided)." >> {{ log_file }}
+            echo "" >> {{ log_file }}
+
+        - debug: msg="⚠️  Healthcheck service skipped (no URL provided)."
+      when: healthchecks_url == 'SKIPPED'
 
     # ==========================================================
     # 16. AUTO_TEST PYTHON ENVIRONMENT SETUP
@@ -1029,7 +1077,11 @@
         echo "- SSH on port {{ ssh_port }} (key-only)" >> {{ log_file }}
         echo "- Docker + NVIDIA runtime ready" >> {{ log_file }}
         echo "- Tailscale and RealVNC installed" >> {{ log_file }}
-        echo "- Healthcheck active (every 5 min)" >> {{ log_file }}
+        {% if healthchecks_url != 'SKIPPED' %}
+        echo "- Healthcheck active (every 5 min): {{ healthchecks_url }}" >> {{ log_file }}
+        {% else %}
+        echo "- Healthcheck skipped (no URL provided)" >> {{ log_file }}
+        {% endif %}
         echo "- Auto reboot daily at {{ auto_reboot_time }}" >> {{ log_file }}
         echo "- Auto test environment: ~/code/auto_test (Python 3.12 venv)" >> {{ log_file }}
         echo "===================================================================" >> {{ log_file }}
@@ -1049,7 +1101,11 @@
           - SSH on port {{ ssh_port }} (key-only)
           - Docker + NVIDIA runtime ready
           - Tailscale and RealVNC installed
-          - Healthcheck active (every 5 min)
+          {% if healthchecks_url != 'SKIPPED' %}
+          - Healthcheck active (every 5 min): {{ healthchecks_url }}
+          {% else %}
+          - Healthcheck skipped (no URL provided)
+          {% endif %}
           - Auto reboot daily at {{ auto_reboot_time }}
           - Auto test environment: ~/code/auto_test (Python 3.12 venv)
 
