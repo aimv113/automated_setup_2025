@@ -395,23 +395,38 @@
     # ==========================================================
     - name: Install NVIDIA driver
       block:
-        - apt_repository: { repo: ppa:graphics-drivers/ppa, state: present, update_cache: yes }
-        - apt: { name: "nvidia-driver-{{ nvidia_driver_version }}", state: present }
-        - lineinfile:
+        - name: Install ubuntu-drivers-common
+          apt:
+            name: ubuntu-drivers-common
+            state: present
+            update_cache: yes
+
+        - name: Install NVIDIA driver using ubuntu-drivers
+          command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}-server
+          register: nvidia_driver_install
+          changed_when: "'already installed' not in nvidia_driver_install.stdout"
+
+        - name: Configure GRUB for NVIDIA KMS
+          lineinfile:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
             line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash nvidia-drm.modeset=1"'
             backup: yes
           register: grub_updated
-        - command: update-grub
+
+        - name: Update GRUB configuration
+          command: update-grub
           when: grub_updated.changed
-        - copy:
+
+        - name: Configure NVIDIA modprobe options
+          copy:
             dest: /etc/modprobe.d/nvidia.conf
             mode: '0644'
             content: |
               options nvidia-drm modeset=1
               options nvidia NVreg_PreserveVideoMemoryAllocations=1
-        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled." >> {{ log_file }}
+
+        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }}-server installed with KMS enabled." >> {{ log_file }}
     
     - name: Log NVIDIA driver installation
       shell: |
@@ -420,7 +435,7 @@
         echo "===========================================================" >> {{ log_file }}
         echo "" >> {{ log_file }}
     
-    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled."
+    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }}-server installed with KMS enabled."
 
     # ==========================================================
     # 11. CUDA TOOLKIT
@@ -640,54 +655,40 @@
             groups: docker
             append: yes
 
-        - name: Download NVIDIA Docker GPG key
-          get_url:
-            url: https://nvidia.github.io/libnvidia-container/gpgkey
-            dest: /tmp/nvidia-docker.gpg
-            mode: '0644'
-
-        - name: Dearmor NVIDIA Docker GPG key
-          shell: gpg --dearmor -o /etc/apt/keyrings/nvidia-docker.gpg /tmp/nvidia-docker.gpg
-          args:
-            creates: /etc/apt/keyrings/nvidia-docker.gpg
-
-        - name: Set permissions on NVIDIA Docker GPG key
+        - name: Create keyrings directory for NVIDIA Container Toolkit
           file:
-            path: /etc/apt/keyrings/nvidia-docker.gpg
-            mode: '0644'
+            path: /usr/share/keyrings
+            state: directory
+            mode: '0755'
 
-        - name: Add NVIDIA Docker repository
+        - name: Download and install NVIDIA Container Toolkit GPG key
           shell: |
-            distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-            curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-            sed 's#deb https://#deb [signed-by=/etc/apt/keyrings/nvidia-docker.gpg] https://#g' | \
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+            gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+          args:
+            creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+        - name: Add NVIDIA Container Toolkit repository
+          shell: |
+            curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
             tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
           args:
             creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-        - name: Update apt cache for NVIDIA repository
+        - name: Update apt cache for NVIDIA Container Toolkit
           apt:
             update_cache: yes
 
-        - name: Install NVIDIA container toolkit
+        - name: Install NVIDIA Container Toolkit
           apt:
             name: nvidia-container-toolkit
             state: present
 
-        - name: Configure Docker to use NVIDIA runtime
-          copy:
-            dest: /etc/docker/daemon.json
-            mode: '0644'
-            content: |
-              {
-                "runtimes": {
-                  "nvidia": {
-                    "path": "nvidia-container-runtime",
-                    "runtimeArgs": []
-                  }
-                },
-                "default-runtime": "nvidia"
-              }
+        - name: Configure Docker runtime using nvidia-ctk
+          command: nvidia-ctk runtime configure --runtime=docker
+          register: nvidia_ctk_config
+          changed_when: nvidia_ctk_config.rc == 0
           notify: restart docker
 
         - name: Start and enable Docker service
