@@ -63,8 +63,8 @@ This playbook configures a complete Ubuntu 24.04 system with development tools, 
 - **X11 Config**: Automatic GPU configuration based on environment
 
 ### 10. NVIDIA Driver
-- NVIDIA driver installation (version 580)
-- Graphics drivers PPA repository
+- NVIDIA driver installation (version 580 desktop/standard with display support)
+- Uses `ubuntu-drivers` for official Ubuntu method
 - Kernel Mode Setting (KMS) enabled
 - GRUB configuration updated with `nvidia-drm.modeset=1`
 - Video memory preservation configured

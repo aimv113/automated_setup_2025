@@ -470,7 +470,7 @@
             update_cache: yes
 
         - name: Install NVIDIA driver using ubuntu-drivers
-          command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}-server
+          command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}
           register: nvidia_driver_install
           changed_when: "'already installed' not in nvidia_driver_install.stdout"
 
@@ -494,16 +494,16 @@
               options nvidia-drm modeset=1
               options nvidia NVreg_PreserveVideoMemoryAllocations=1
 
-        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }}-server installed with KMS enabled." >> {{ log_file }}
-    
+        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled." >> {{ log_file }}
+
     - name: Log NVIDIA driver installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "10. NVIDIA DRIVER & GRUB CONFIG - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "" >> {{ log_file }}
-    
-    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }}-server installed with KMS enabled."
+
+    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled."
 
     # ==========================================================
     # 11. CUDA TOOLKIT

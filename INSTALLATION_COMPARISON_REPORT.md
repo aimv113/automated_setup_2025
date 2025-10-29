@@ -182,10 +182,11 @@ sudo apt install code
 sudo ubuntu-drivers autoinstall
 
 # OR manual with specific version
-sudo ubuntu-drivers install nvidia:580-server
+sudo ubuntu-drivers install nvidia:580         # Desktop (with display support)
+sudo ubuntu-drivers install nvidia:580-server  # Server (headless)
 ```
 
-### Playbook Method (UPDATED - lines 396-429)
+### Playbook Method (UPDATED - lines 462-506)
 ```yaml
 - name: Install ubuntu-drivers-common
   apt:
@@ -194,16 +195,16 @@ sudo ubuntu-drivers install nvidia:580-server
     update_cache: yes
 
 - name: Install NVIDIA driver using ubuntu-drivers
-  command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}-server
+  command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}
 ```
 
 ### Assessment
-✅ **NOW COMPLIANT** - Uses official `ubuntu-drivers` tool with `-server` suffix.
+✅ **NOW COMPLIANT** - Uses official `ubuntu-drivers` tool with desktop version for display support.
 
 ### Benefits of Official Method
 - **Secure Boot compatibility**: `ubuntu-drivers` handles Secure Boot properly
 - **Hardware detection**: Automatically selects compatible driver
-- **Enterprise Ready Drivers**: Server suffix provides better stability for compute workloads
+- **Display Support**: Desktop version includes full graphics support (not just compute)
 - **Officially supported**: Direct Ubuntu support
 
 ### Status: **COMPLIANT** ✅
@@ -485,7 +486,7 @@ This is a **custom application setup** rather than system package installation, 
    - Safely merges with existing Docker configuration
    - Follows official documentation exactly
 
-2. **NVIDIA Driver** (COMPLETED): Now uses `ubuntu-drivers install nvidia:580-server`
+2. **NVIDIA Driver** (COMPLETED): Now uses `ubuntu-drivers install nvidia:580` (desktop with display support)
    - Better Secure Boot support
    - Official Ubuntu method with Enterprise Ready Drivers
    - Automatic hardware compatibility

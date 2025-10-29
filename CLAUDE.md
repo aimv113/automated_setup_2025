@@ -79,7 +79,7 @@ realvnc_version: "7.13.0"
 | Tailscale | 223-272 | Official GPG key and repository list |
 | RealVNC | 274-295 | Direct .deb download from NVIDIA |
 | VS Code | 297-341 | Modern keyring location (`/usr/share/keyrings/`) |
-| NVIDIA Driver | 430-475 | Official `ubuntu-drivers install nvidia:580-server` |
+| NVIDIA Driver | 430-475 | Official `ubuntu-drivers install nvidia:580` (desktop with display) |
 | CUDA Toolkit | 477-510 | Official NVIDIA keyring and repository |
 | TensorRT | 513-689 | Smart URL auto-construction, dual method with fail-safe |
 | Docker + NVIDIA Runtime | 691-803 | Dynamic arch/codename, `nvidia-ctk runtime configure` |
