@@ -2,7 +2,43 @@
 
 ## Initial Ubuntu 24.04.3 Setup
 
-### 1. Update System and Install Required Packages
+### 1. Configure SSH Service
+
+```bash
+sudo systemctl start ssh
+sudo systemctl enable ssh
+```
+
+Get remote IP address:
+```bash
+hostname -I
+```
+
+Ssh into remote machine
+```bash
+ssh lift@ip address
+```
+
+
+After setting up remote machine and successful ssh connection and key from local machine is sent, lock it down
+```bash
+sudo sed -i '/^\s*Port\s\+[0-9]\+/d' /etc/ssh/sshd_config && \
+sudo sed -i '/^#\?PasswordAuthentication/c\PasswordAuthentication no' /etc/ssh/sshd_config && \
+sudo sed -i '/^#\?ChallengeResponseAuthentication/c\ChallengeResponseAuthentication no' /etc/ssh/sshd_config && \
+sudo sed -i '/^#\?PubkeyAuthentication/c\PubkeyAuthentication yes' /etc/ssh/sshd_config && \
+sudo sed -i '1i Port 33412' /etc/ssh/sshd_config && \
+sudo systemctl disable --now ssh.socket >/dev/null 2>&1 && \
+sudo systemctl mask ssh.socket >/dev/null 2>&1 && \
+sudo systemctl enable --now ssh.service && \
+sudo systemctl daemon-reload && \
+sudo systemctl restart ssh && \
+sudo systemctl status ssh --no-pager
+```
+
+
+
+
+### 1. Update System and Install Required Packages, Clone Repository and Run Setup
 
 ```bash
 sudo apt update
@@ -10,25 +46,6 @@ sudo apt install openssh-server ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025/
 ansible-playbook ubuntu-setup.yml -K
-```
-
-### 2. Configure SSH Service
-
-```bash
-sudo systemctl start ssh
-sudo systemctl enable ssh
-```
-
-### 3. Clone Repository and Run Setup
-
-Get your IP address:
-```bash
-hostname -I
-```
-
-SSH into the machine:
-```bash
-ssh finn@<ip-address>
 ```
 
 
