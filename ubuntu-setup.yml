@@ -16,7 +16,7 @@
     # NVIDIA Driver configuration
     nvidia_driver_version: "580"
     nvidia_driver_version_full: "580.95.05"
-    nvidia_driver_local_repo_url: "https://us.download.nvidia.com/XFree86/Linux-x86_64/{{ nvidia_driver_version_full }}/nvidia-driver-local-repo-ubuntu2404-{{ nvidia_driver_version_full }}_1.0-1_amd64.deb"
+    nvidia_driver_local_repo_url: "https://developer.download.nvidia.com/compute/nvidia-driver/{{ nvidia_driver_version_full }}/local_installers/nvidia-driver-local-repo-ubuntu2404-{{ nvidia_driver_version_full }}_1.0-1_amd64.deb"
 
     # CUDA Toolkit configuration
     cuda_version: "13-0"
