@@ -10,9 +10,19 @@
     user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
     auto_reboot_time: "06:00"  # 6 AM daily reboot
 
+    # Local installer storage for reproducible builds
+    installers_base_path: "/opt/installers"
+
+    # NVIDIA Driver configuration
     nvidia_driver_version: "580"
+    nvidia_driver_version_full: "580.95.05"
+    nvidia_driver_local_repo_url: "https://us.download.nvidia.com/XFree86/Linux-x86_64/{{ nvidia_driver_version_full }}/nvidia-driver-local-repo-ubuntu2404-{{ nvidia_driver_version_full }}_1.0-1_amd64.deb"
+
+    # CUDA Toolkit configuration
     cuda_version: "13-0"
     cuda_version_full: "13.0"
+    cuda_version_full_numeric: "13.0.0"
+    cuda_local_repo_url: "https://developer.download.nvidia.com/compute/cuda/{{ cuda_version_full_numeric }}/local_installers/cuda-repo-ubuntu2404-13-0-local_{{ cuda_version_full_numeric }}-1_amd64.deb"
 
     # TensorRT version configuration
     tensorrt_version_major: "10.13"     # Major version (e.g., "10.13")
@@ -84,12 +94,49 @@
           Ubuntu 24 System Setup - Started at {{ ansible_date_time.iso8601 }}
           Host: {{ inventory_hostname }}
           ===================================================================
-          
+
         mode: '0644'
       tags: always
 
     # ==========================================================
-    # 1. SYSTEM UPDATE
+    # 1. CREATE LOCAL INSTALLER STORAGE
+    # ==========================================================
+    - name: Create local installer base directory
+      file:
+        path: "{{ installers_base_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Create nvidia-driver installer directory
+      file:
+        path: "{{ installers_base_path }}/nvidia-driver"
+        state: directory
+        mode: '0755'
+
+    - name: Create cuda installer directory
+      file:
+        path: "{{ installers_base_path }}/cuda"
+        state: directory
+        mode: '0755'
+
+    - name: Create tensorrt installer directory
+      file:
+        path: "{{ installers_base_path }}/tensorrt"
+        state: directory
+        mode: '0755'
+
+    - name: Log local installer storage creation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1. LOCAL INSTALLER STORAGE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Created {{ installers_base_path }} for reproducible builds" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # ==========================================================
+    # 2. SYSTEM UPDATE
     # ==========================================================
     - name: Update apt cache and upgrade packages
       apt:
@@ -496,20 +543,42 @@
           System: {{ 'Virtual Machine (' + virtualization_type + ')' if is_virtual_machine else 'Physical/Bare Metal' }}
 
     # ==========================================================
-    # 10. NVIDIA DRIVER & GRUB CONFIG
+    # 10. NVIDIA DRIVER & GRUB CONFIG (LOCAL REPO)
     # ==========================================================
-    - name: Install NVIDIA driver
+    - name: Install NVIDIA driver from local repository
       block:
-        - name: Install ubuntu-drivers-common
+        - name: Download NVIDIA driver local repository package
+          get_url:
+            url: "{{ nvidia_driver_local_repo_url }}"
+            dest: "{{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb"
+            mode: '0644'
+            timeout: 300
+
+        - name: Install NVIDIA driver local repository package
           apt:
-            name: ubuntu-drivers-common
+            deb: "{{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb"
             state: present
+
+        - name: Find NVIDIA driver repository directory
+          shell: find /var -maxdepth 1 -type d -name 'nvidia-driver-local-repo-*' | head -n 1
+          register: nvidia_repo_dir
+          changed_when: false
+
+        - name: Copy NVIDIA driver GPG key to keyrings
+          shell: cp {{ nvidia_repo_dir.stdout }}/nvidia-*-keyring.gpg /usr/share/keyrings/
+          args:
+            creates: /usr/share/keyrings/nvidia-*-keyring.gpg
+          when: nvidia_repo_dir.stdout != ""
+
+        - name: Update apt cache with NVIDIA driver repository
+          apt:
             update_cache: yes
 
-        - name: Install NVIDIA driver using ubuntu-drivers
-          command: ubuntu-drivers install nvidia:{{ nvidia_driver_version }}
-          register: nvidia_driver_install
-          changed_when: "'already installed' not in nvidia_driver_install.stdout"
+        - name: Install NVIDIA driver meta-package
+          apt:
+            name: "nvidia-driver-{{ nvidia_driver_version }}"
+            state: present
+            update_cache: yes
 
         - name: Configure GRUB for NVIDIA KMS
           lineinfile:
@@ -531,52 +600,158 @@
               options nvidia-drm modeset=1
               options nvidia NVreg_PreserveVideoMemoryAllocations=1
 
-        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled." >> {{ log_file }}
+        - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version_full }} installed from local repository." >> {{ log_file }}
 
     - name: Log NVIDIA driver installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "10. NVIDIA DRIVER & GRUB CONFIG - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
+        echo "Installed NVIDIA driver {{ nvidia_driver_version_full }} from local repository" >> {{ log_file }}
+        echo "Stored in: {{ installers_base_path }}/nvidia-driver/" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
-    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version }} installed with KMS enabled."
+    - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version_full }} installed from local repository."
+
+    # Hold NVIDIA driver packages to prevent upgrades
+    - name: Get list of installed NVIDIA driver packages
+      shell: dpkg -l | grep '^ii' | grep -E 'nvidia.*-{{ nvidia_driver_version }}' | awk '{print $2}'
+      register: nvidia_packages_list
+      changed_when: false
+      failed_when: false
+
+    - name: Hold NVIDIA driver packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ nvidia_packages_list.stdout_lines }}"
+      when: nvidia_packages_list.stdout_lines | length > 0
+
+    - name: Verify NVIDIA driver packages are held
+      shell: dpkg --get-selections | grep -E 'nvidia.*-{{ nvidia_driver_version }}' | grep hold
+      register: nvidia_held_packages
+      changed_when: false
+      failed_when: nvidia_held_packages.rc != 0
+
+    - name: Log NVIDIA driver version locking
+      shell: |
+        echo "🔒 Version Locking: {{ nvidia_held_packages.stdout_lines | length }} NVIDIA driver packages held" >> {{ log_file }}
+        echo "Packages will NOT upgrade with 'apt upgrade'" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "🔒 {{ nvidia_held_packages.stdout_lines | length }} NVIDIA driver packages held to prevent upgrades"
 
     # ==========================================================
-    # 11. CUDA TOOLKIT
+    # 11. CUDA TOOLKIT (LOCAL REPO)
     # ==========================================================
-    - name: Install CUDA Toolkit
+    - name: Install CUDA Toolkit from local repository
       block:
-        - get_url:
-            url: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-            dest: /tmp/cuda-keyring.deb
-        - apt: { deb: /tmp/cuda-keyring.deb }
-        - apt: { update_cache: yes }
-        - apt: { name: "cuda-toolkit-{{ cuda_version }}", state: present }
-        - copy:
+        - name: Download CUDA local repository package
+          get_url:
+            url: "{{ cuda_local_repo_url }}"
+            dest: "{{ installers_base_path }}/cuda/cuda-repo-local.deb"
+            mode: '0644'
+            timeout: 600
+
+        - name: Install CUDA local repository package
+          apt:
+            deb: "{{ installers_base_path }}/cuda/cuda-repo-local.deb"
+            state: present
+
+        - name: Find CUDA repository directory
+          shell: find /var -maxdepth 1 -type d -name 'cuda-repo-ubuntu2404-*-local' | head -n 1
+          register: cuda_repo_dir
+          changed_when: false
+
+        - name: Copy CUDA GPG key to keyrings
+          shell: cp {{ cuda_repo_dir.stdout }}/cuda-*-keyring.gpg /usr/share/keyrings/
+          args:
+            creates: /usr/share/keyrings/cuda-*-keyring.gpg
+          when: cuda_repo_dir.stdout != ""
+
+        - name: Update apt cache with CUDA repository
+          apt:
+            update_cache: yes
+
+        - name: Install CUDA toolkit package
+          apt:
+            name: "cuda-toolkit-{{ cuda_version }}"
+            state: present
+            update_cache: yes
+
+        - name: Configure CUDA environment in /etc/profile.d/
+          copy:
             dest: /etc/profile.d/cuda.sh
             mode: '0644'
             content: |
               export PATH=/usr/local/cuda-{{ cuda_version_full }}/bin:$PATH
               export LD_LIBRARY_PATH=/usr/local/cuda-{{ cuda_version_full }}/lib64:$LD_LIBRARY_PATH
-        - copy:
+
+        - name: Configure CUDA library path for ldconfig
+          copy:
             dest: /etc/ld.so.conf.d/cuda.conf
             mode: '0644'
             content: |
               /usr/local/cuda-{{ cuda_version_full }}/lib64
           notify: update ldconfig
-        - shell: echo "✅ CUDA {{ cuda_version_full }} installed." >> {{ log_file }}
-        - debug: msg="✅ CUDA {{ cuda_version_full }} installed."
+
+        - shell: echo "✅ CUDA {{ cuda_version_full }} installed from local repository." >> {{ log_file }}
+        - debug: msg="✅ CUDA {{ cuda_version_full }} installed from local repository."
       rescue:
         - debug: msg="⚠️ CUDA installation failed."
         - shell: echo "⚠️ CUDA installation failed." >> {{ log_file }}
-    
+
     - name: Log CUDA installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "11. CUDA TOOLKIT - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
+        echo "Installed CUDA {{ cuda_version_full }} from local repository" >> {{ log_file }}
+        echo "Stored in: {{ installers_base_path }}/cuda/" >> {{ log_file }}
         echo "" >> {{ log_file }}
+
+    # Hold CUDA packages to prevent upgrades
+    - name: Hold CUDA packages to prevent upgrades
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - "cuda-toolkit-{{ cuda_version }}"
+        - "cuda-runtime-{{ cuda_version }}"
+        - "cuda-libraries-{{ cuda_version }}"
+        - "cuda-libraries-dev-{{ cuda_version }}"
+        - "cuda-nvcc-{{ cuda_version }}"
+        - "cuda-cudart-{{ cuda_version }}"
+        - "cuda-cudart-dev-{{ cuda_version }}"
+
+    - name: Get list of all installed CUDA packages for holding
+      shell: dpkg -l | grep '^ii' | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | awk '{print $2}'
+      register: additional_cuda_packages
+      changed_when: false
+      failed_when: false
+
+    - name: Hold additional CUDA packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ additional_cuda_packages.stdout_lines }}"
+      when: additional_cuda_packages.stdout_lines | length > 0
+
+    - name: Verify CUDA packages are held
+      shell: dpkg --get-selections | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | grep hold
+      register: cuda_held_packages
+      changed_when: false
+      failed_when: cuda_held_packages.rc != 0
+
+    - name: Log CUDA version locking
+      shell: |
+        echo "🔒 Version Locking: {{ cuda_held_packages.stdout_lines | length }} CUDA packages held" >> {{ log_file }}
+        echo "Packages will NOT upgrade with 'apt upgrade'" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "🔒 {{ cuda_held_packages.stdout_lines | length }} CUDA packages held to prevent upgrades"
 
     # ==========================================================
     # 12. TENSORRT
@@ -757,7 +932,67 @@
         echo "" >> {{ log_file }}
 
     # ==========================================================
-    # 13. DOCKER + NVIDIA RUNTIME
+    # 13. UNATTENDED-UPGRADES PROTECTION
+    # ==========================================================
+    - name: Create unattended-upgrades GPU stack blacklist
+      copy:
+        dest: /etc/apt/apt.conf.d/51nvidia-blacklist
+        mode: '0644'
+        content: |
+          // Prevent automatic upgrades of GPU stack packages
+          // This ensures the frozen NVIDIA driver + CUDA + TensorRT versions remain stable
+          Unattended-Upgrade::Package-Blacklist {
+              "nvidia-driver-*";
+              "nvidia-utils-*";
+              "libnvidia-*";
+              "nvidia-kernel-*";
+              "nvidia-dkms-*";
+              "cuda-*";
+              "libcu*";
+              "tensorrt-*";
+              "libnvinfer*";
+              "libnvonnxparsers*";
+          };
+
+    - name: Log unattended-upgrades protection
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "13. UNATTENDED-UPGRADES PROTECTION - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Created GPU stack blacklist in /etc/apt/apt.conf.d/51nvidia-blacklist" >> {{ log_file }}
+        echo "GPU packages will NOT be automatically upgraded" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "🛡️ Unattended-upgrades GPU stack blacklist created"
+
+    # ==========================================================
+    # 14. REPOSITORY CLEANUP
+    # ==========================================================
+    - name: Clean up old local repositories
+      shell: |
+        # Keep only the most recent TensorRT local repo
+        find /var -maxdepth 1 -type d -name 'nv-tensorrt-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+        # Keep only the most recent CUDA local repo
+        find /var -maxdepth 1 -type d -name 'cuda-repo-ubuntu2404-*-local' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+        # Keep only the most recent NVIDIA driver local repo
+        find /var -maxdepth 1 -type d -name 'nvidia-driver-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+      failed_when: false
+      changed_when: false
+
+    - name: Log repository cleanup
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "14. REPOSITORY CLEANUP - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Cleaned up old local repositories (kept most recent only)" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "🧹 Old local repositories cleaned up"
+
+    # ==========================================================
+    # 15. DOCKER + NVIDIA RUNTIME
     # ==========================================================
     - name: Install Docker and NVIDIA container runtime
       block:

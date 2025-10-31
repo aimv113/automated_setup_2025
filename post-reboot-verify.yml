@@ -90,12 +90,12 @@
     # ==========================================================
     # 5. INSTALL ML PACKAGES WITH CUDA SUPPORT
     # ==========================================================
-    - name: Install PyTorch with CUDA support
+    - name: Install PyTorch with CUDA 13.0 support
       become: yes
       become_user: "{{ ssh_user }}"
       shell: |
         source {{ user_home }}/code/auto_test/venv/bin/activate
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
       args:
         executable: /bin/bash
       register: torch_install

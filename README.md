@@ -210,52 +210,103 @@ If the command returns anything other than `none`, you're running in a VM and th
 
 ---
 
-## Package Management
+## Package Management & Reproducibility
 
-### TensorRT Version Pinning
+### Frozen GPU Stack (100% Reproducible)
 
-TensorRT 10.13 is automatically pinned to prevent accidental upgrades during `apt update` or `apt upgrade`.
+The entire NVIDIA GPU stack is **version-locked** to ensure reproducibility:
 
-**Held packages:**
-- `tensorrt-dev`
-- `tensorrt-libs`
-- `libnvinfer10`
-- `libnvinfer-dev`
-- `libnvinfer-headers-dev`
-- `libnvinfer-plugin10`
-- `libnvonnxparsers10`
-- `python3-libnvinfer`
-- `python3-libnvinfer-dev`
+| Component | Version | Method | Packages Held |
+|-----------|---------|--------|---------------|
+| **NVIDIA Driver** | 580.95.05 | Local repository | ~15 packages |
+| **CUDA Toolkit** | 13.0.0 | Local repository | ~20+ packages |
+| **TensorRT** | 10.13.3 | Local repository | 9 packages |
+
+All installers are stored in `/opt/installers/` for offline rebuilds.
+
+### Three Layers of Protection
+
+1. **Local Repositories** (`/opt/installers/`): Immunity to upstream removal
+2. **Package Holding** (`dpkg hold`): Prevents `apt upgrade`
+3. **Unattended-Upgrades Blacklist** (`/etc/apt/apt.conf.d/51nvidia-blacklist`): Blocks automatic updates
 
 ### Check Held Packages
 
-View all held packages:
+**View all GPU stack held packages:**
 ```bash
-dpkg --get-selections | grep hold
+dpkg --get-selections | grep hold | grep -E 'nvidia|cuda|tensorrt'
 ```
 
-Check TensorRT-specific packages:
+**Count by component:**
 ```bash
-dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold
+echo "NVIDIA Driver packages held:"
+dpkg --get-selections | grep hold | grep -E 'nvidia.*-580' | wc -l
+
+echo "CUDA packages held:"
+dpkg --get-selections | grep hold | grep -E 'cuda-|libcu' | wc -l
+
+echo "TensorRT packages held:"
+dpkg --get-selections | grep hold | grep -E 'tensorrt|libnvinfer' | wc -l
 ```
 
-### Manually Upgrade TensorRT (if needed)
+### Held Package Details
 
-If you need to upgrade TensorRT in the future:
+**NVIDIA Driver (580.95.05):** All packages matching `nvidia.*-580`, including:
+- `nvidia-driver-580`, `nvidia-utils-580`, `libnvidia-gl-580`, `libnvidia-compute-580`, etc.
+
+**CUDA Toolkit (13.0):** All packages matching `cuda-*-13-0`, including:
+- `cuda-toolkit-13-0`, `cuda-runtime-13-0`, `cuda-libraries-13-0`, `cuda-nvcc-13-0`, etc.
+
+**TensorRT (10.13.3):** Exactly 9 packages:
+- `tensorrt-dev`, `tensorrt-libs`, `libnvinfer10`, `libnvinfer-dev`, `libnvinfer-headers-dev`, `libnvinfer-plugin10`, `libnvonnxparsers10`, `python3-libnvinfer`, `python3-libnvinfer-dev`
+
+### Verify Local Installers
 
 ```bash
-# Unhold packages
-sudo apt-mark unhold tensorrt-dev tensorrt-libs libnvinfer10 libnvinfer-dev \
-  libnvinfer-headers-dev libnvinfer-plugin10 libnvonnxparsers10 \
-  python3-libnvinfer python3-libnvinfer-dev
+# Check installer storage
+ls -lh /opt/installers/nvidia-driver/
+ls -lh /opt/installers/cuda/
+ls -lh /opt/installers/tensorrt/
 
-# Update and upgrade
-sudo apt update && sudo apt upgrade
-
-# Hold packages again at new version
-sudo apt-mark hold tensorrt-dev tensorrt-libs libnvinfer10 libnvinfer-dev \
-  libnvinfer-headers-dev libnvinfer-plugin10 libnvonnxparsers10 \
-  python3-libnvinfer python3-libnvinfer-dev
+# Verify total storage used (~2-3 GB)
+du -sh /opt/installers/
 ```
+
+### Offline Rebuild Capability
+
+```bash
+# Backup installers for offline storage
+cd /opt
+sudo tar -czf installers-backup-$(date +%Y%m%d).tar.gz installers/
+
+# Restore and rebuild on new machine (no internet required)
+scp installers-backup-20250131.tar.gz user@newmachine:/opt/
+ssh user@newmachine
+cd /opt && sudo tar -xzf installers-backup-20250131.tar.gz
+# Run playbook - will use local installers
+cd ~/automated_setup_2025
+ansible-playbook ubuntu-setup.yml -K -vv
+```
+
+### Manual Upgrade Procedures
+
+**⚠️ IMPORTANT:** Never upgrade one component in isolation. Check compatibility matrix first: [REPRODUCIBILITY_STRATEGY.md](REPRODUCIBILITY_STRATEGY.md)
+
+**Quick upgrade example (TensorRT only):**
+```bash
+# 1. Unhold TensorRT packages
+dpkg --get-selections | grep hold | grep -E 'tensorrt|libnvinfer' | awk '{print $1}' | xargs sudo apt-mark unhold
+
+# 2. Update playbook variables in ubuntu-setup.yml
+# tensorrt_version_full: "10.14.0"
+
+# 3. Run playbook
+ansible-playbook ubuntu-setup.yml -K -vv
+
+# 4. Reboot and verify
+sudo reboot
+```
+
+**For complete upgrade procedures**, see: [REPRODUCIBILITY_STRATEGY.md](REPRODUCIBILITY_STRATEGY.md)
 
 

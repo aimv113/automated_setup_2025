@@ -61,7 +61,29 @@ Every section writes to `/var/log/ansible-ubuntu-setup-<timestamp>.log` (created
 **4. Error Handling**
 Non-critical sections use `block/rescue` (Tailscale, RealVNC, VS Code, CUDA, TensorRT, Docker). Critical sections (system update, NVIDIA driver) fail entire playbook.
 
-### Configuration Variables (Lines 7-10, 12-30)
+**5. Version Locking Strategy (Frozen Installation Model)**
+The playbook implements a fully reproducible GPU stack with three layers of protection:
+
+**Layer 1: Local Repositories** (`/opt/installers/`)
+- NVIDIA Driver 580.95.05: Local repo .deb stored in `/opt/installers/nvidia-driver/`
+- CUDA Toolkit 13.0.0: Local repo .deb stored in `/opt/installers/cuda/`
+- TensorRT 10.13.3: Local repo .deb stored in `/opt/installers/tensorrt/`
+- Enables offline rebuilds and immunity to upstream removal
+
+**Layer 2: Package Holding** (`dpkg hold`)
+- NVIDIA Driver: ~15 packages held (all `nvidia.*-580`)
+- CUDA Toolkit: ~20+ packages held (all `cuda-*-13-0` and `libcu*`)
+- TensorRT: 9 packages held (exact list in TENSORRT_VERSION_STRATEGY.md)
+- Prevents `apt upgrade` from touching GPU stack
+
+**Layer 3: Unattended-Upgrades Blacklist** (`/etc/apt/apt.conf.d/51nvidia-blacklist`)
+- Blacklists: `nvidia-driver-*`, `cuda-*`, `tensorrt-*`, `libnvinfer*`
+- Prevents automatic security updates from breaking compatibility
+- Defensive protection even if holds are manually cleared
+
+**Result**: 100% GPU stack reproducibility. See [REPRODUCIBILITY_STRATEGY.md](REPRODUCIBILITY_STRATEGY.md) for complete documentation.
+
+### Configuration Variables (Lines 13-41)
 
 ```yaml
 ssh_port: 33412
@@ -69,11 +91,21 @@ ssh_user: "{{ ansible_env.USER }}"
 auto_reboot_time: "06:00"
 # healthchecks_url - Prompted interactively during run
 
+# Local installer storage for reproducible builds
+installers_base_path: "/opt/installers"
+
+# NVIDIA Driver configuration (local repository method)
 nvidia_driver_version: "580"
+nvidia_driver_version_full: "580.95.05"
+nvidia_driver_local_repo_url: "https://us.download.nvidia.com/..."
+
+# CUDA Toolkit configuration (local repository method)
 cuda_version: "13-0"              # Short format for apt packages
 cuda_version_full: "13.0"         # Full format for display
+cuda_version_full_numeric: "13.0.0"  # Full version with patch
+cuda_local_repo_url: "https://developer.download.nvidia.com/..."
 
-# TensorRT configuration
+# TensorRT configuration (local repository method)
 tensorrt_version_major: "10.13"
 tensorrt_version_full: "10.13.3"
 tensorrt_version_pattern: "10.13.*"
@@ -83,7 +115,7 @@ tensorrt_local_repo_url: ""       # Auto-constructed if empty
 realvnc_version: "7.13.0"
 ```
 
-**Important:** Update both short and full version formats together. TensorRT URL is auto-constructed unless you override `tensorrt_local_repo_url`.
+**Important:** Update both short and full version formats together. All installers are downloaded to `/opt/installers/` for offline rebuilds.
 
 ## Installation Compliance
 
@@ -155,7 +187,8 @@ dpkg --get-selections | grep hold  # Should show tensorrt packages
 - **README.md**: User setup instructions
 - **SETUP_COMPONENTS.md**: Installed components list
 - **INSTALLATION_COMPARISON_REPORT.md**: Compliance analysis vs official docs
-- **TENSORRT_VERSION_STRATEGY.md**: Version locking strategy
+- **REPRODUCIBILITY_STRATEGY.md**: Complete frozen installation model documentation
+- **TENSORRT_VERSION_STRATEGY.md**: TensorRT version locking (legacy, see REPRODUCIBILITY_STRATEGY.md for full stack)
 - **TENSORRT_URL_VERIFICATION.md**: Verified URL patterns
 - **CLAUDE.md**: This file (AI guidance)
 
@@ -176,4 +209,4 @@ ansible-playbook ubuntu-setup.yml -K -vv
 
 ## Key Line Ranges
 
-- **ubuntu-setup.yml** (1074 lines): Variables 7-33, VM Detection 344-427, NVIDIA Driver 430-475, CUDA 477-510, TensorRT 513-689, Docker 691-803, Healthchecks 832-881, Reboot Check 982-1018
+- **ubuntu-setup.yml** (~1200 lines): Variables 13-41, Local Installer Storage 104-136, System Update 139-152, Tools 155-220, SSH 223-270, UFW 273-293, Auto-Reboot 296-340, Tailscale 343-392, RealVNC 395-416, VS Code 419-475, Display/VM Detection 478-551, NVIDIA Driver (Local Repo) 546-643, CUDA (Local Repo) 646-754, TensorRT (Local Repo) 757-932, Unattended-Upgrades Blacklist 935-967, Repository Cleanup 970-992, Docker+NVIDIA 995-1100+, Python Environment, Healthchecks, ML Environment, Reboot Check, Final Message
