@@ -22,20 +22,21 @@ ssh lift@ip address
 
 After setting up remote machine and successful ssh connection and key from local machine is sent, lock it down
 ```bash
+sudo ufw allow 33412/tcp && \
+if systemctl list-unit-files | grep -q '^ssh.socket'; then \
+  sudo systemctl disable --now ssh.socket && \
+  sudo systemctl mask ssh.socket && \
+  sudo systemctl enable --now ssh.service; \
+fi && \
 sudo sed -i '/^\s*Port\s\+[0-9]\+/d' /etc/ssh/sshd_config && \
-sudo sed -i '/^#\?PasswordAuthentication/c\PasswordAuthentication no' /etc/ssh/sshd_config && \
-sudo sed -i '/^#\?ChallengeResponseAuthentication/c\ChallengeResponseAuthentication no' /etc/ssh/sshd_config && \
-sudo sed -i '/^#\?PubkeyAuthentication/c\PubkeyAuthentication yes' /etc/ssh/sshd_config && \
 sudo sed -i '1i Port 33412' /etc/ssh/sshd_config && \
-sudo systemctl disable --now ssh.socket >/dev/null 2>&1 && \
-sudo systemctl mask ssh.socket >/dev/null 2>&1 && \
-sudo systemctl enable --now ssh.service && \
+sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config && \
+sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
 sudo systemctl daemon-reload && \
 sudo systemctl restart ssh && \
-sudo ufw allow 33412/tcp \
-sudo sed -i 's/^#Port .*/Port 33412/' /etc/ssh/sshd_config \
-sudo systemctl restart ssh \
 sudo systemctl status ssh --no-pager
+
 ```
 
 install lightweight desktop
