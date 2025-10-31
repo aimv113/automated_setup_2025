@@ -84,7 +84,7 @@ cd automated_setup_2025/
 ### 4. Run the Setup Playbook
 
 ```bash
-ansible-playbook ubuntu-setup.yml -K -vv
+ansible-playbook ubuntu-setup.yml -K
 ```
 
 **Flags:**

@@ -646,7 +646,6 @@
     # 10. NVIDIA DRIVER & GRUB CONFIG (LOCAL REPO)
     # ==========================================================
     - name: Install NVIDIA driver from local repository
-      register: nvidia_driver_install
       block:
         - name: Download NVIDIA driver local repository package
           get_url:
