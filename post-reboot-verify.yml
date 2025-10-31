@@ -49,7 +49,7 @@
     # 3. VERIFY CUDA TOOLKIT
     # ==========================================================
     - name: Check CUDA version
-      shell: nvcc --version
+      shell: /usr/local/cuda-13.0/bin/nvcc --version
       register: nvcc_version
       failed_when: nvcc_version.rc != 0
 
