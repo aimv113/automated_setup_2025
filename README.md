@@ -45,7 +45,7 @@ Connect from your local machine:
 ssh username@<ip-address>
 ```
 
-#send ssh keys
+# send ssh keys!!
 
 **Optional: Lock Down SSH (Recommended after key exchange)**
 
