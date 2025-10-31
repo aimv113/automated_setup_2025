@@ -141,15 +141,16 @@ ansible-playbook post-reboot-verify.yml -K
 
 ---
 
+Fix firefox as default browser
 ```bash
-sudo snap remove firefox
-sudo add-apt-repository ppa:mozillateam/ppa -y
-sudo apt update
-sudo apt install firefox -y
-xdg-settings set default-web-browser firefox.desktop
+xdg-settings set default-web-browser firefox_firefox.desktop
+xdg-mime default firefox_firefox.desktop x-scheme-handler/http
+xdg-mime default firefox_firefox.desktop x-scheme-handler/https
 ```
 
+## Open up and log into vnc server
 
+## Open up VSC and log into git online
 
 ## What Gets Installed
 
