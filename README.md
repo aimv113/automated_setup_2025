@@ -1,26 +1,53 @@
 # Automated Setup 2025
 
-## Initial Ubuntu 24.04.3 Setup
+Automated Ubuntu 24.04 setup with NVIDIA GPU support, CUDA, TensorRT, Docker, ML environment, and monitoring. Features a **frozen, reproducible GPU stack** with four layers of protection.
 
-### 1. Configure SSH Service
+## Prerequisites
 
+**Recommended:** Ubuntu 24.04 Desktop (GNOME)
+- Full desktop environment with GDM3
+- Wayland automatically disabled, Xorg configured
+- NVIDIA display drivers configured for bare metal and VM setups
+
+**Supported:** Ubuntu 24.04 Server + Desktop Environment
+- The playbook gracefully handles LightDM (Xubuntu) or no display manager
+- See "Display Manager Compatibility" section below
+
+## Initial Ubuntu 24.04 Setup
+
+### 1. Install Ubuntu Desktop
+
+**Option A: Fresh Installation (Recommended)**
+Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
+
+**Option B: Server + Desktop (Advanced)**
+If you installed Ubuntu Server, you can add the desktop:
+```bash
+sudo apt update
+sudo apt install ubuntu-desktop -y
+```
+
+### 2. Configure SSH Service (For Remote Access)
+
+Enable SSH for remote management:
 ```bash
 sudo systemctl start ssh
 sudo systemctl enable ssh
 ```
 
-Get remote IP address:
+Get your machine's IP address:
 ```bash
 hostname -I
 ```
 
-Ssh into remote machine
+Connect from your local machine:
 ```bash
-ssh lift@ip address
+ssh username@<ip-address>
 ```
 
+**Optional: Lock Down SSH (Recommended after key exchange)**
 
-After setting up remote machine and successful ssh connection and key from local machine is sent, lock it down
+After copying your SSH key to the remote machine, secure SSH:
 ```bash
 sudo ufw allow 33412/tcp && \
 if systemctl list-unit-files | grep -q '^ssh.socket'; then \
@@ -36,60 +63,50 @@ sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/ss
 sudo systemctl daemon-reload && \
 sudo systemctl restart ssh && \
 sudo systemctl status ssh --no-pager
-
 ```
 
-install lightweight desktop
-```bash
-sudo apt install --no-install-recommends xubuntu-desktop -y
-```
+This will:
+- Change SSH port to 33412
+- Disable password authentication
+- Enable key-only authentication
 
-Dummy driver for virtual monitor
-```bash
-sudo apt install -y xserver-xorg-video-dummy && sudo mkdir -p /etc/X11/xorg.conf.d && sudo tee /etc/X11/xorg.conf.d/10-dummy.conf > /dev/null <<'EOF'
-Section "Device"
-  Identifier "DummyGPU"
-  Driver "dummy"
-  VideoRam 256000
-EndSection
-
-Section "Monitor"
-  Identifier "VirtualMonitor"
-  HorizSync 28-80
-  VertRefresh 48-75
-  Modeline "1920x1080" 172.80 1920 2040 2248 2576 1080 1083 1088 1120
-EndSection
-
-Section "Screen"
-  Identifier "Screen0"
-  Device "DummyGPU"
-  Monitor "VirtualMonitor"
-  DefaultDepth 24
-  SubSection "Display"
-    Depth 24
-    Modes "1920x1080"
-  EndSubSection
-EndSection
-EOF
-```
-
-
-### 1. Update System and Install Required Packages, Clone Repository and Run Setup
+### 3. Install Ansible and Clone Repository
 
 ```bash
 sudo apt update
-sudo apt install openssh-server ansible git -y
+sudo apt install ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025/
-ansible-playbook ubuntu-setup.yml -K
 ```
 
+### 4. Run the Setup Playbook
 
-**Note:** The playbook will prompt you to create a Healthchecks.io URL. You can:
+```bash
+ansible-playbook ubuntu-setup.yml -K -vv
+```
+
+**Flags:**
+- `-K`: Prompts for sudo password
+- `-vv`: Verbose output (optional, but helpful for troubleshooting)
+
+**Interactive Prompt:**
+The playbook will prompt you to create a Healthchecks.io URL (optional monitoring):
 - Create a free account at https://healthchecks.io and paste the ping URL when prompted
-- Press Enter to skip healthcheck monitoring
+- Or press **Enter** to skip healthcheck monitoring
 
-### 4. Reboot and Verify
+**What Happens:**
+- ✅ Pre-flight validation (disk space, network)
+- ✅ Downloads NVIDIA driver 580.95.05, CUDA 13.0, TensorRT 10.13.3 to `/opt/installers/`
+- ✅ Installs entire GPU stack from local repositories
+- ✅ Applies four layers of protection (dpkg hold, unattended-upgrades blacklist, APT preferences)
+- ✅ Creates version manifest and SHA-256 checksums
+- ✅ Configures Docker, Tailscale, RealVNC, VS Code
+- ✅ Sets up Python ML environment
+- ✅ Configures daily auto-reboot at 6 AM
+
+**Duration:** ~20-30 minutes (depends on internet speed for initial downloads)
+
+### 5. Reboot and Verify
 
 After the initial setup completes, **reboot the system** to load the NVIDIA driver:
 
@@ -100,39 +117,64 @@ sudo reboot
 After reboot, run the verification playbook to confirm everything is working:
 
 ```bash
-cd automated_setup_2025/
-ansible-playbook post-reboot-verify.yml -K
+cd ~/automated_setup_2025
+ansible-playbook post-reboot-verify.yml -K -vv
 ```
 
-This will verify:
-- ✅ NVIDIA driver is loaded
-- ✅ CUDA toolkit is available
-- ✅ Docker can access GPU
-- ✅ PyTorch CUDA support is enabled
-- ✅ TensorRT is installed
-
-### 5. Copy SSH Keys
-
-```bash
-ssh-copy-id -p 33412 finn@<ip-address>
-```
+**Verification includes:**
+- ✅ NVIDIA driver loaded (`nvidia-smi`)
+- ✅ CUDA toolkit available (`nvcc --version`)
+- ✅ Docker NVIDIA runtime working
+- ✅ PyTorch CUDA 13.0 support enabled
+- ✅ TensorRT packages installed and held
 
 ---
 
-## Post-Installation Information
+## What Gets Installed
 
-### What Gets Installed
+### Frozen GPU Stack (100% Reproducible)
 
-The playbook automatically installs and configures:
-- **NVIDIA Driver 580** with CUDA 13.0
-- **TensorRT 10.13.3** (version-locked with `dpkg hold` - safe with `apt upgrade`)
+| Component | Version | Method | Protection |
+|-----------|---------|--------|------------|
+| **NVIDIA Driver** | 580.95.05 | Local repository | 4 layers |
+| **CUDA Toolkit** | 13.0.0 | Local repository | 4 layers |
+| **TensorRT** | 10.13.3 | Local repository | 4 layers |
+| **PyTorch** | Latest (cu130) | pip (Python venv) | - |
+
+**Four Layers of Protection:**
+1. Local installers in `/opt/installers/` (offline capability)
+2. Package holding with `dpkg hold` (~44+ packages)
+3. Unattended-upgrades blacklist
+4. APT preferences with Pin-Priority 1001
+
+**Result:** `apt upgrade` will **NEVER** touch your GPU stack! ✅
+
+### Additional Components
+
 - **Docker** with NVIDIA Container Toolkit
-- **Tailscale** and **RealVNC Server**
-- **Python 3.12** virtual environment at `~/code/auto_test`
-- Daily system reboot at 6:00 AM
-- Healthchecks.io monitoring (5 min interval, optional)
-- SSH on custom port 33412
-- **Automatic VM detection** and display fixes (if running in a VM)
+- **Tailscale** VPN (optional - requires manual setup)
+- **RealVNC Server** (version 7.13.0)
+- **VS Code** (latest from Microsoft repository)
+- **Python 3.12** virtual environment at `~/code/auto_test` with ML libraries
+- **SSH** on custom port 33412 (key-only authentication)
+- **UFW** firewall configured
+- **Daily auto-reboot** at 6:00 AM
+- **Healthchecks.io** monitoring (5 min interval, optional)
+
+### Display Manager Compatibility
+
+**Ubuntu Desktop (GNOME + GDM3):** ✅ Fully supported and recommended
+- Wayland automatically disabled
+- Xorg configured with NVIDIA drivers
+- KMS (Kernel Mode Setting) enabled
+
+**Ubuntu Server + Xubuntu (LightDM):** ✅ Supported
+- Playbook detects LightDM and configures appropriately
+- No Wayland to disable
+
+**Headless (No Display Manager):** ✅ Supported
+- Playbook gracefully skips display manager configuration
+- GPU compute still works perfectly
 
 ### TensorRT Installation - Smart Configuration
 
@@ -173,40 +215,42 @@ tensorrt_local_repo_url: "https://your-server.com/tensorrt.deb"
 ### Python Virtual Environment
 
 The setup creates a ready-to-use Python environment at `~/code/auto_test` with:
-- Python 3.12
-- PyTorch with CUDA support
-- Ultralytics (YOLO)
-- TensorRT Python bindings
-- ONNX Runtime GPU
+- **Python 3.12** (venv)
+- **PyTorch 2.x** with CUDA 13.0 support (cu130 wheels)
+- **Ultralytics** (YOLO v8/v11)
+- **TensorRT** Python bindings
+- **ONNX Runtime GPU**
 
 Activate the environment:
 ```bash
 source ~/code/auto_test/activate.sh
+python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 ```
 
-### Virtual Machine Detection
+### Virtual Machine Detection & Display Configuration
 
-The playbook automatically detects if it's running in a virtual machine using `systemd-detect-virt` and applies appropriate fixes.
+The playbook automatically detects if it's running in a virtual machine using `systemd-detect-virt` and applies environment-specific configurations.
 
-**Supported virtualization platforms:**
-- QEMU/KVM
-- VMware
-- VirtualBox
-- Hyper-V
-- And others detected by systemd
+**Physical Machine (Bare Metal):**
+- ✅ NVIDIA driver with full display support
+- ✅ Xorg configured with NVIDIA acceleration
+- ✅ KMS (Kernel Mode Setting) enabled
+- ✅ Wayland disabled (GDM3)
 
-**Automatic VM fixes applied:**
-- QXL display driver configuration
-- Disables AutoAddGPU to prevent conflicts
-- Removes conflicting NVIDIA X11 configs
-- Optimizes display server for VM environments
+**Virtual Machine (QEMU/KVM/VMware/VirtualBox/Hyper-V):**
+- ✅ QXL display driver configured
+- ✅ AutoAddGPU disabled to prevent conflicts
+- ✅ NVIDIA X11 configs removed (GPU used for compute only)
+- ✅ Display optimized for VM environment
 
-**Manual VM detection check:**
+**Check your environment:**
 ```bash
 systemd-detect-virt
+# "none" = physical machine
+# "qemu", "kvm", "vmware", etc. = virtual machine
 ```
 
-If the command returns anything other than `none`, you're running in a VM and the display fixes will be automatically applied.
+**Note:** VM detection happens automatically - no configuration needed!
 
 ---
 
