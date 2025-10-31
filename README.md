@@ -45,6 +45,8 @@ Connect from your local machine:
 ssh username@<ip-address>
 ```
 
+#send ssh keys
+
 **Optional: Lock Down SSH (Recommended after key exchange)**
 
 After copying your SSH key to the remote machine, secure SSH:
