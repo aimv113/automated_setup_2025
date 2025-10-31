@@ -35,6 +35,11 @@ sudo systemctl restart ssh && \
 sudo systemctl status ssh --no-pager
 ```
 
+install lightweight desktop
+```bash
+sudo apt install --no-install-recommends xubuntu-desktop -y
+```
+
 
 
 
