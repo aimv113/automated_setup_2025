@@ -694,6 +694,7 @@
             name: "nvidia-driver-{{ nvidia_driver_version }}"
             state: present
             update_cache: yes
+          register: nvidia_driver_install
 
         - name: Configure GRUB for NVIDIA KMS
           lineinfile:
