@@ -40,7 +40,34 @@ install lightweight desktop
 sudo apt install --no-install-recommends xubuntu-desktop -y
 ```
 
+Dummy driver for virtual monitor
+```bash
+sudo apt install -y xserver-xorg-video-dummy && sudo mkdir -p /etc/X11/xorg.conf.d && sudo tee /etc/X11/xorg.conf.d/10-dummy.conf > /dev/null <<'EOF'
+Section "Device"
+  Identifier "DummyGPU"
+  Driver "dummy"
+  VideoRam 256000
+EndSection
 
+Section "Monitor"
+  Identifier "VirtualMonitor"
+  HorizSync 28-80
+  VertRefresh 48-75
+  Modeline "1920x1080" 172.80 1920 2040 2248 2576 1080 1083 1088 1120
+EndSection
+
+Section "Screen"
+  Identifier "Screen0"
+  Device "DummyGPU"
+  Monitor "VirtualMonitor"
+  DefaultDepth 24
+  SubSection "Display"
+    Depth 24
+    Modes "1920x1080"
+  EndSubSection
+EndSection
+EOF
+```
 
 
 ### 1. Update System and Install Required Packages, Clone Repository and Run Setup
