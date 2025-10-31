@@ -843,18 +843,18 @@
         echo "" >> {{ log_file }}
 
     # Hold CUDA packages to prevent upgrades
-    - name: Hold CUDA packages to prevent upgrades
+    - name: Get list of installed CUDA 13-0 packages
+      shell: dpkg -l | grep -E '^ii' | awk '{print $2}' | grep 'cuda.*-13-0$'
+      register: installed_cuda_packages
+      changed_when: false
+      failed_when: false
+
+    - name: Hold installed CUDA packages to prevent upgrades
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
-      loop:
-        - "cuda-toolkit-{{ cuda_version }}"
-        - "cuda-runtime-{{ cuda_version }}"
-        - "cuda-libraries-{{ cuda_version }}"
-        - "cuda-libraries-dev-{{ cuda_version }}"
-        - "cuda-nvcc-{{ cuda_version }}"
-        - "cuda-cudart-{{ cuda_version }}"
-        - "cuda-cudart-dev-{{ cuda_version }}"
+      loop: "{{ installed_cuda_packages.stdout_lines }}"
+      when: installed_cuda_packages.stdout_lines | length > 0
 
     - name: Get list of all installed CUDA packages for holding
       shell: dpkg -l | grep '^ii' | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | awk '{print $2}'
@@ -873,7 +873,7 @@
       shell: dpkg --get-selections | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | grep hold
       register: cuda_held_packages
       changed_when: false
-      failed_when: cuda_held_packages.rc != 0
+      failed_when: false
 
     - name: Log CUDA version locking
       shell: |
