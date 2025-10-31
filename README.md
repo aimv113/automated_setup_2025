@@ -32,6 +32,9 @@ sudo systemctl mask ssh.socket >/dev/null 2>&1 && \
 sudo systemctl enable --now ssh.service && \
 sudo systemctl daemon-reload && \
 sudo systemctl restart ssh && \
+sudo ufw allow 33412/tcp \
+sudo sed -i 's/^#Port .*/Port 33412/' /etc/ssh/sshd_config \
+sudo systemctl restart ssh \
 sudo systemctl status ssh --no-pager
 ```
 
