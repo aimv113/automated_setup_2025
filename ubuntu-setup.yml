@@ -99,7 +99,54 @@
       tags: always
 
     # ==========================================================
-    # 1. CREATE LOCAL INSTALLER STORAGE
+    # 1. PRE-FLIGHT VALIDATION
+    # ==========================================================
+    - name: Check available disk space on /opt
+      shell: df -BG /opt | tail -1 | awk '{print $4}' | sed 's/G//'
+      register: opt_free_space
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if insufficient disk space
+      fail:
+        msg: "Insufficient disk space on /opt. Available: {{ opt_free_space.stdout }}GB, Required: 5GB minimum for installers"
+      when: opt_free_space.stdout | int < 5
+
+    - name: Test network connectivity to NVIDIA
+      uri:
+        url: "https://developer.download.nvidia.com/"
+        method: HEAD
+        timeout: 10
+        status_code: [200, 301, 302, 403]
+      register: nvidia_network_check
+      failed_when: false
+      changed_when: false
+
+    - name: Test network connectivity to CUDA repos
+      uri:
+        url: "https://developer.download.nvidia.com/compute/cuda/"
+        method: HEAD
+        timeout: 10
+        status_code: [200, 301, 302, 403]
+      register: cuda_network_check
+      failed_when: false
+      changed_when: false
+
+    - name: Log pre-flight validation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1. PRE-FLIGHT VALIDATION - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Available disk space on /opt: {{ opt_free_space.stdout }}GB" >> {{ log_file }}
+        echo "Network connectivity to NVIDIA: {{ 'OK' if nvidia_network_check.status is defined else 'FAILED (offline mode?)' }}" >> {{ log_file }}
+        echo "Network connectivity to CUDA repos: {{ 'OK' if cuda_network_check.status is defined else 'FAILED (offline mode?)' }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "✅ Pre-flight checks passed: {{ opt_free_space.stdout }}GB available, network: {{ 'online' if nvidia_network_check.status is defined else 'offline' }}"
+
+    # ==========================================================
+    # 2. CREATE LOCAL INSTALLER STORAGE
     # ==========================================================
     - name: Create local installer base directory
       file:
@@ -130,13 +177,66 @@
     - name: Log local installer storage creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "1. LOCAL INSTALLER STORAGE - $(date)" >> {{ log_file }}
+        echo "2. LOCAL INSTALLER STORAGE - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Created {{ installers_base_path }} for reproducible builds" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
+    - name: Create version manifest
+      copy:
+        dest: "{{ installers_base_path }}/VERSIONS.json"
+        mode: '0644'
+        content: |
+          {
+            "manifest_created": "{{ ansible_date_time.iso8601 }}",
+            "hostname": "{{ ansible_hostname }}",
+            "ubuntu_version": "{{ ansible_distribution_version }}",
+            "components": {
+              "nvidia_driver": {
+                "version": "{{ nvidia_driver_version_full }}",
+                "method": "local_repository",
+                "url": "{{ nvidia_driver_local_repo_url }}"
+              },
+              "cuda_toolkit": {
+                "version": "{{ cuda_version_full_numeric }}",
+                "method": "local_repository",
+                "url": "{{ cuda_local_repo_url }}"
+              },
+              "tensorrt": {
+                "version": "{{ tensorrt_version_full }}",
+                "method": "{{ tensorrt_install_method }}",
+                "url": "{{ tensorrt_local_repo_url if tensorrt_local_repo_url else 'auto-constructed' }}"
+              },
+              "pytorch_cuda": {
+                "version": "cu130",
+                "note": "Installed via pip in post-reboot-verify.yml"
+              }
+            },
+            "reproducibility": {
+              "local_installers": "{{ installers_base_path }}",
+              "package_holding": "dpkg hold on nvidia-*-{{ nvidia_driver_version }}, cuda-*-{{ cuda_version }}, tensorrt-*",
+              "unattended_upgrades_blacklist": "/etc/apt/apt.conf.d/51nvidia-blacklist",
+              "apt_preferences": "/etc/apt/preferences.d/99-gpu-stack-pinning"
+            }
+          }
+
+    - debug:
+        msg: "📋 Version manifest created at {{ installers_base_path }}/VERSIONS.json"
+
+    - name: Create SHA-256 checksums placeholder file
+      copy:
+        dest: "{{ installers_base_path }}/SHA256SUMS"
+        mode: '0644'
+        content: |
+          # SHA-256 Checksums for GPU Stack Installers
+          # Generated: {{ ansible_date_time.iso8601 }}
+          # Verify with: cd /opt/installers && sha256sum -c SHA256SUMS
+          #
+          # Checksums will be appended during installation
+        force: no
+
     # ==========================================================
-    # 2. SYSTEM UPDATE
+    # 3. SYSTEM UPDATE
     # ==========================================================
     - name: Update apt cache and upgrade packages
       apt:
@@ -546,6 +646,7 @@
     # 10. NVIDIA DRIVER & GRUB CONFIG (LOCAL REPO)
     # ==========================================================
     - name: Install NVIDIA driver from local repository
+      register: nvidia_driver_install
       block:
         - name: Download NVIDIA driver local repository package
           get_url:
@@ -553,6 +654,21 @@
             dest: "{{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb"
             mode: '0644'
             timeout: 300
+          register: nvidia_driver_download
+
+        - name: Calculate SHA-256 checksum of NVIDIA driver package
+          shell: sha256sum {{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb | awk '{print $1}'
+          register: nvidia_driver_sha256
+          changed_when: false
+          when: nvidia_driver_download.changed
+
+        - name: Log NVIDIA driver SHA-256 checksum
+          shell: |
+            echo "NVIDIA Driver SHA-256: {{ nvidia_driver_sha256.stdout }}" >> {{ log_file }}
+            echo "  File: nvidia-driver-local-repo.deb" >> {{ log_file }}
+            echo "  Downloaded: {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
+            echo "{{ nvidia_driver_sha256.stdout }}  nvidia-driver/nvidia-driver-local-repo.deb" >> {{ installers_base_path }}/SHA256SUMS
+          when: nvidia_driver_download.changed
 
         - name: Install NVIDIA driver local repository package
           apt:
@@ -653,6 +769,21 @@
             dest: "{{ installers_base_path }}/cuda/cuda-repo-local.deb"
             mode: '0644'
             timeout: 600
+          register: cuda_download
+
+        - name: Calculate SHA-256 checksum of CUDA package
+          shell: sha256sum {{ installers_base_path }}/cuda/cuda-repo-local.deb | awk '{print $1}'
+          register: cuda_sha256
+          changed_when: false
+          when: cuda_download.changed
+
+        - name: Log CUDA SHA-256 checksum
+          shell: |
+            echo "CUDA Toolkit SHA-256: {{ cuda_sha256.stdout }}" >> {{ log_file }}
+            echo "  File: cuda-repo-local.deb" >> {{ log_file }}
+            echo "  Downloaded: {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
+            echo "{{ cuda_sha256.stdout }}  cuda/cuda-repo-local.deb" >> {{ installers_base_path }}/SHA256SUMS
+          when: cuda_download.changed
 
         - name: Install CUDA local repository package
           apt:
@@ -967,23 +1098,84 @@
         msg: "🛡️ Unattended-upgrades GPU stack blacklist created"
 
     # ==========================================================
-    # 14. REPOSITORY CLEANUP
+    # 14. APT PREFERENCES (PIN-PRIORITY 1001)
+    # ==========================================================
+    - name: Create APT preferences for GPU stack pinning
+      copy:
+        dest: /etc/apt/preferences.d/99-gpu-stack-pinning
+        mode: '0644'
+        content: |
+          # Pin NVIDIA Driver {{ nvidia_driver_version_full }} - Highest Priority
+          Package: nvidia-driver-{{ nvidia_driver_version }}
+          Pin: version {{ nvidia_driver_version_full }}*
+          Pin-Priority: 1001
+
+          Package: nvidia-*-{{ nvidia_driver_version }}
+          Pin: version *
+          Pin-Priority: 1001
+
+          # Pin CUDA Toolkit {{ cuda_version_full }}
+          Package: cuda-toolkit-{{ cuda_version }}
+          Pin: version *
+          Pin-Priority: 1001
+
+          Package: cuda-*-{{ cuda_version }}
+          Pin: version *
+          Pin-Priority: 1001
+
+          Package: libcu*
+          Pin: version *{{ cuda_version_full }}*
+          Pin-Priority: 1001
+
+          # Pin TensorRT {{ tensorrt_version_full }}
+          Package: tensorrt-*
+          Pin: version *{{ tensorrt_version_full }}*
+          Pin-Priority: 1001
+
+          Package: libnvinfer*
+          Pin: version *
+          Pin-Priority: 1001
+
+          # Prevent newer CUDA versions from being installed
+          Package: cuda-toolkit-14-*
+          Pin: version *
+          Pin-Priority: -1
+
+          Package: cuda-toolkit-15-*
+          Pin: version *
+          Pin-Priority: -1
+
+    - name: Log APT preferences creation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "14. APT PREFERENCES PINNING - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Created /etc/apt/preferences.d/99-gpu-stack-pinning" >> {{ log_file }}
+        echo "Pin-Priority 1001 for nvidia-{{ nvidia_driver_version }}, cuda-{{ cuda_version }}, tensorrt-{{ tensorrt_version_full }}" >> {{ log_file }}
+        echo "Fourth layer of protection (beyond dpkg hold + unattended-upgrades)" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "📌 APT preferences pinning created (Pin-Priority 1001)"
+
+    # ==========================================================
+    # 15. REPOSITORY CLEANUP
     # ==========================================================
     - name: Clean up old local repositories
       shell: |
         # Keep only the most recent TensorRT local repo
-        find /var -maxdepth 1 -type d -name 'nv-tensorrt-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+        find /var -maxdepth 1 -mindepth 1 -type d -name 'nv-tensorrt-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf 2>/dev/null || true
         # Keep only the most recent CUDA local repo
-        find /var -maxdepth 1 -type d -name 'cuda-repo-ubuntu2404-*-local' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+        find /var -maxdepth 1 -mindepth 1 -type d -name 'cuda-repo-ubuntu2404-*-local' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf 2>/dev/null || true
         # Keep only the most recent NVIDIA driver local repo
-        find /var -maxdepth 1 -type d -name 'nvidia-driver-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf
+        find /var -maxdepth 1 -mindepth 1 -type d -name 'nvidia-driver-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf 2>/dev/null || true
       failed_when: false
       changed_when: false
 
     - name: Log repository cleanup
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "14. REPOSITORY CLEANUP - $(date)" >> {{ log_file }}
+        echo "15. REPOSITORY CLEANUP - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Cleaned up old local repositories (kept most recent only)" >> {{ log_file }}
         echo "" >> {{ log_file }}
