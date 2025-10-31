@@ -102,7 +102,7 @@ nvidia_driver_local_repo_url: "https://us.download.nvidia.com/..."
 # CUDA Toolkit configuration (local repository method)
 cuda_version: "13-0"              # Short format for apt packages
 cuda_version_full: "13.0"         # Full format for display
-cuda_version_full_numeric: "13.0.0"  # Full version with patch
+cuda_version_full_numeric: "13.0.2"  # Full version with patch
 cuda_local_repo_url: "https://developer.download.nvidia.com/..."
 
 # TensorRT configuration (local repository method)

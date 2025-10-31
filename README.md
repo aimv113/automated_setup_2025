@@ -148,7 +148,7 @@ ansible-playbook post-reboot-verify.yml -K -vv
 | Component | Version | Method | Protection |
 |-----------|---------|--------|------------|
 | **NVIDIA Driver** | 580.95.05 | Local repository | 4 layers |
-| **CUDA Toolkit** | 13.0.0 | Local repository | 4 layers |
+| **CUDA Toolkit** | 13.0.2 | Local repository | 4 layers |
 | **TensorRT** | 10.13.3 | Local repository | 4 layers |
 | **PyTorch** | Latest (cu130) | pip (Python venv) | - |
 
@@ -274,7 +274,7 @@ The entire NVIDIA GPU stack is **version-locked** to ensure reproducibility:
 | Component | Version | Method | Packages Held |
 |-----------|---------|--------|---------------|
 | **NVIDIA Driver** | 580.95.05 | Local repository | ~15 packages |
-| **CUDA Toolkit** | 13.0.0 | Local repository | ~20+ packages |
+| **CUDA Toolkit** | 13.0.2 | Local repository | ~20+ packages |
 | **TensorRT** | 10.13.3 | Local repository | 9 packages |
 
 All installers are stored in `/opt/installers/` for offline rebuilds.
