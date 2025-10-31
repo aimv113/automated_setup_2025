@@ -387,7 +387,17 @@
         is_virtual_machine: "{{ virt_detect.rc == 0 and virt_detect.stdout != 'none' }}"
         virtualization_type: "{{ virt_detect.stdout | default('none') }}"
 
-    - name: Disable Wayland and force Xorg
+    - name: Check if GDM3 is installed
+      stat:
+        path: /etc/gdm3/custom.conf
+      register: gdm3_config
+
+    - name: Check if LightDM is installed
+      stat:
+        path: /etc/lightdm/lightdm.conf
+      register: lightdm_config
+
+    - name: Disable Wayland and force Xorg (GDM3)
       lineinfile:
         path: /etc/gdm3/custom.conf
         regexp: '^#?WaylandEnable='
@@ -395,7 +405,29 @@
         insertafter: '^\[daemon\]'
         backup: yes
       notify: restart gdm3
-      register: xorg_config
+      register: xorg_config_gdm3
+      when: gdm3_config.stat.exists
+
+    - name: Configure LightDM to use Xorg (if present)
+      lineinfile:
+        path: /etc/lightdm/lightdm.conf
+        regexp: '^#?user-session='
+        line: 'user-session=xubuntu'
+        insertafter: '^\[Seat:\*\]'
+        backup: yes
+      notify: restart lightdm
+      register: xorg_config_lightdm
+      when: lightdm_config.stat.exists
+
+    - name: Log display manager configuration
+      shell: |
+        {% if gdm3_config.stat.exists %}
+        echo "✅ GDM3 configured to use Xorg (Wayland disabled)" >> {{ log_file }}
+        {% elif lightdm_config.stat.exists %}
+        echo "✅ LightDM configured to use Xorg" >> {{ log_file }}
+        {% else %}
+        echo "ℹ️ No display manager (GDM3/LightDM) detected - skipping Wayland/Xorg configuration" >> {{ log_file }}
+        {% endif %}
 
     - name: Apply VM-specific display fix (QXL)
       block:
@@ -429,13 +461,17 @@
                   Identifier "Screen0"
                   Device "QXL"
               EndSection
-          notify: restart gdm3
+          notify:
+            - restart gdm3
+            - restart lightdm
 
         - name: Remove conflicting NVIDIA X11 config
           file:
             path: /etc/X11/xorg.conf.d/10-nvidia.conf
             state: absent
-          notify: restart gdm3
+          notify:
+            - restart gdm3
+            - restart lightdm
 
         - shell: |
             echo "✅ VM detected ({{ virtualization_type }}): Applied QXL display fix" >> {{ log_file }}
@@ -1092,6 +1128,10 @@
       systemd: { name: docker, state: restarted }
     - name: restart gdm3
       systemd: { name: gdm3, state: restarted }
+      when: gdm3_config.stat.exists | default(false)
+    - name: restart lightdm
+      systemd: { name: lightdm, state: restarted }
+      when: lightdm_config.stat.exists | default(false)
     - name: update ldconfig
       command: ldconfig
     - name: reload systemd
