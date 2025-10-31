@@ -21,11 +21,20 @@ Automated Ubuntu 24.04 setup with NVIDIA GPU support, CUDA, TensorRT, Docker, ML
 Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
 
 **Option B: Server + Desktop (Advanced)**
-If you installed Ubuntu Server, you can add the desktop:
+If you installed Ubuntu Server, you can add the desktop environment:
 ```bash
 sudo apt update
 sudo apt install ubuntu-desktop -y
+
+# Set system to boot into graphical desktop by default
+sudo systemctl set-default graphical.target
+
+# Verify the default target
+sudo systemctl get-default
+# Should output: graphical.target
 ```
+
+**Note:** After installing the desktop, you may want to reboot before running the playbook to ensure the graphical environment is fully initialized.
 
 ### 2. Configure SSH Service (For Remote Access)
 
