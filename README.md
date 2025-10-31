@@ -129,7 +129,7 @@ After reboot, run the verification playbook to confirm everything is working:
 
 ```bash
 cd ~/automated_setup_2025
-ansible-playbook post-reboot-verify.yml -K -vv
+ansible-playbook post-reboot-verify.yml -K
 ```
 
 **Verification includes:**
@@ -140,6 +140,16 @@ ansible-playbook post-reboot-verify.yml -K -vv
 - ✅ TensorRT packages installed and held
 
 ---
+
+```bash
+sudo snap remove firefox
+sudo add-apt-repository ppa:mozillateam/ppa -y
+sudo apt update
+sudo apt install firefox -y
+xdg-settings set default-web-browser firefox.desktop
+```
+
+
 
 ## What Gets Installed
 
