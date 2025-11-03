@@ -36,3 +36,10 @@ pip install ultralytics tensorrt==10.13.3.9 onnxruntime-gpu==1.23.2 cvzone onvif
 
 in rev4.3 in:
 - tests/tensorRT/tensor-check.py
+
+
+in terminal
+```bash
+sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
+```
+to disable known issue: popup appears because Ubuntu’s Apport crash reporter found a .crash file in /var/crash from a previous boot or crash.
