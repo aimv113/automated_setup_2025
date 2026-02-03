@@ -20,6 +20,14 @@ xdg-mime default firefox_firefox.desktop x-scheme-handler/http
 xdg-mime default firefox_firefox.desktop x-scheme-handler/https
 ```
 
+## crontab
+
+sudo crontab -e
+```bash
+0 6,18 * * * /sbin/reboot
+0 6,18 * * * echo "Cron executed at $(date)" >> /var/log/cron_test.log
+```
+
 ## Open up and log into vnc server
 
 ## Open up VSC and log into git online
