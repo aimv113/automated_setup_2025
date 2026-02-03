@@ -1,9 +1,9 @@
-**Auto power on with power
+**Auto power on with power**
 
 ￼- power and thermal
 auto power on
 
-**Zeroteir
+**Zeroteir**
 
 curl -s https://install.zerotier.com | sudo bash
 sudo zerotier-cli join xxxxxxxxxxxxxxxxx (from zerotier)
