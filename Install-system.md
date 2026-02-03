@@ -1,3 +1,15 @@
+Auto power on with power
+￼- power and thermal
+auto power on
+
+Zeroteir
+curl -s https://install.zerotier.com | sudo bash
+sudo zerotier-cli join xxxxxxxxxxxxxxxxx (from zerotier)
+
+Ssh lock down
+sudo nano /etc/ssh/sshd_config
+ sudo nano ~/.ssh/authorized_keys
+
 
 **Option A: Fresh Installation (Recommended)**
 Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
