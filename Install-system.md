@@ -1,10 +1,10 @@
-### BIOS
+### a. BIOS
 **Auto power on with power**
 
 ￼- power and thermal
 auto power on
 
-### Connection
+### b. Connection
 **Zeroteir**
 
 curl -s https://install.zerotier.com | sudo bash
@@ -14,7 +14,7 @@ Ssh lock down
 sudo nano /etc/ssh/sshd_config
  sudo nano ~/.ssh/authorized_keys
 
-### Ubuntu
+### 1. Ubuntu
 
 **Option A: Fresh Installation (Recommended)**
 Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
