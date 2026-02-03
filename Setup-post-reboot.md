@@ -33,6 +33,10 @@ sudo crontab -e
 ## Open up VSC and log into git online
 
 ## download VSC extensions
+Python
+Data preview
+indent rainbow
+rainbow csv
 
 ## clone git repo
 
