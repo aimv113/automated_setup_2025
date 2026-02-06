@@ -456,90 +456,6 @@
     - debug: msg="✅ UFW enabled with SSH port {{ ssh_port }} open."
 
     # ==========================================================
-    # 5. GIT SETUP (SSH default, GitHub key for remote machine)
-    # ==========================================================
-    - name: Prompt for Git user name
-      pause:
-        prompt: "Git user.name for commits on this machine"
-      register: git_name_prompt
-      when: git_user_name is not defined
-
-    - name: Set git_user_name from prompt
-      set_fact:
-        git_user_name: "{{ git_name_prompt.user_input | default('', true) | trim }}"
-      when: git_user_name is not defined
-
-    - name: Prompt for Git user email
-      pause:
-        prompt: "Git user.email for commits on this machine"
-      register: git_email_prompt
-      when: git_user_email is not defined
-
-    - name: Set git_user_email from prompt
-      set_fact:
-        git_user_email: "{{ git_email_prompt.user_input | default('', true) | trim }}"
-      when: git_user_email is not defined
-
-    - name: Set git user.name and user.email
-      command: ["git", "config", "--global", "{{ item.key }}", "{{ item.value }}"]
-      loop:
-        - { key: "user.name", value: "{{ git_user_name | default('') }}" }
-        - { key: "user.email", value: "{{ git_user_email | default('') }}" }
-      when: (git_user_name | default('')) | length > 0 and (git_user_email | default('')) | length > 0
-      become_user: "{{ ssh_user }}"
-      changed_when: true
-
-    - name: Set Git to use SSH instead of HTTPS for GitHub
-      command: git config --global url."git@github.com:".insteadOf "https://github.com/"
-      become_user: "{{ ssh_user }}"
-      changed_when: true
-
-    - name: Ensure .ssh exists for GitHub key
-      file:
-        path: "{{ user_home }}/.ssh"
-        state: directory
-        mode: '0700'
-        owner: "{{ ssh_user }}"
-        group: "{{ ssh_user }}"
-
-    - name: Generate SSH key for GitHub (ed25519)
-      command: >
-        ssh-keygen -t ed25519 -C "github-{{ ansible_hostname }}"
-        -f {{ user_home }}/.ssh/id_ed25519_github -N ""
-        creates: "{{ user_home }}/.ssh/id_ed25519_github"
-      become_user: "{{ ssh_user }}"
-      changed_when: false
-
-    - name: Read GitHub SSH public key
-      slurp:
-        src: "{{ user_home }}/.ssh/id_ed25519_github.pub"
-      register: github_key_content
-
-    - name: Display GitHub SSH public key for user to add
-      debug:
-        msg: |
-          ========== ADD THIS KEY TO GITHUB ==========
-          Settings → SSH and GPG keys → New SSH key
-          Paste the key below, then press Enter in the playbook to continue.
-          ----------
-          {{ github_key_content.content | b64decode | trim }}
-          ----------
-      when: github_key_content.content is defined
-
-    - name: Pause for user to add key to GitHub
-      pause:
-        prompt: "Add the key above to GitHub, then press Enter to continue"
-      when: github_key_content.content is defined
-
-    - name: Log Git setup
-      shell: |
-        echo "===========================================================" >> {{ log_file }}
-        echo "5. GIT SETUP - $(date)" >> {{ log_file }}
-        echo "===========================================================" >> {{ log_file }}
-        echo "✅ Git configured (SSH for GitHub); key in ~/.ssh/id_ed25519_github" >> {{ log_file }}
-        echo "" >> {{ log_file }}
-
-    # ==========================================================
     # 5b. DATA FOLDERS (videos and jpgs for app)
     # ==========================================================
     - name: Ensure app data base path exists
@@ -1672,6 +1588,90 @@
       when: needs_reboot
 
     # ==========================================================
+    # 17. GIT SETUP (SSH default, GitHub key – prompted at end of run)
+    # ==========================================================
+    - name: Prompt for Git user name
+      pause:
+        prompt: "Git user.name for commits on this machine"
+      register: git_name_prompt
+      when: git_user_name is not defined
+
+    - name: Set git_user_name from prompt
+      set_fact:
+        git_user_name: "{{ git_name_prompt.user_input | default('', true) | trim }}"
+      when: git_user_name is not defined
+
+    - name: Prompt for Git user email
+      pause:
+        prompt: "Git user.email for commits on this machine"
+      register: git_email_prompt
+      when: git_user_email is not defined
+
+    - name: Set git_user_email from prompt
+      set_fact:
+        git_user_email: "{{ git_email_prompt.user_input | default('', true) | trim }}"
+      when: git_user_email is not defined
+
+    - name: Set git user.name and user.email
+      command: 'git config --global {{ item.key | quote }} {{ item.value | quote }}'
+      loop:
+        - { key: "user.name", value: "{{ git_user_name | default('') }}" }
+        - { key: "user.email", value: "{{ git_user_email | default('') }}" }
+      when: (git_user_name | default('')) | length > 0 and (git_user_email | default('')) | length > 0
+      become_user: "{{ ssh_user }}"
+      changed_when: true
+
+    - name: Set Git to use SSH instead of HTTPS for GitHub
+      command: git config --global url."git@github.com:".insteadOf "https://github.com/"
+      become_user: "{{ ssh_user }}"
+      changed_when: true
+
+    - name: Ensure .ssh exists for GitHub key
+      file:
+        path: "{{ user_home }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+
+    - name: Generate SSH key for GitHub (ed25519)
+      command: >
+        ssh-keygen -t ed25519 -C "github-{{ ansible_hostname }}"
+        -f {{ user_home }}/.ssh/id_ed25519_github -N ""
+        creates: "{{ user_home }}/.ssh/id_ed25519_github"
+      become_user: "{{ ssh_user }}"
+      changed_when: false
+
+    - name: Read GitHub SSH public key
+      slurp:
+        src: "{{ user_home }}/.ssh/id_ed25519_github.pub"
+      register: github_key_content
+
+    - name: Display GitHub SSH public key for user to add
+      debug:
+        msg: |
+          ========== ADD THIS KEY TO GITHUB ==========
+          Settings → SSH and GPG keys → New SSH key
+          Paste the key below, then press Enter in the playbook to continue.
+          ----------
+          {{ github_key_content.content | b64decode | trim }}
+          ----------
+      when: github_key_content.content is defined
+
+    - name: Pause for user to add key to GitHub
+      pause:
+        prompt: "Add the key above to GitHub, then press Enter to continue"
+      when: github_key_content.content is defined
+
+    - name: Log Git setup
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "17. GIT SETUP - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Git configured (SSH for GitHub); key in ~/.ssh/id_ed25519_github" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # ==========================================================
     # 18. FINAL MESSAGE
     # ==========================================================
     - name: Write final summary to log
@@ -1683,6 +1683,7 @@
         echo "- SSH on port {{ ssh_port }} (key-only)" >> {{ log_file }}
         echo "- Docker + NVIDIA runtime ready" >> {{ log_file }}
         echo "- Tailscale and RealVNC installed" >> {{ log_file }}
+        echo "- Git configured (SSH for GitHub)" >> {{ log_file }}
         {% if healthchecks_url != 'SKIPPED' %}
         echo "- Healthcheck active (every 5 min): {{ healthchecks_url }}" >> {{ log_file }}
         {% else %}
@@ -1707,6 +1708,7 @@
           - SSH on port {{ ssh_port }} (key-only)
           - Docker + NVIDIA runtime ready
           - Tailscale and RealVNC installed
+          - Git configured (SSH for GitHub)
           {% if healthchecks_url != 'SKIPPED' %}
           - Healthcheck active (every 5 min): {{ healthchecks_url }}
           {% else %}
