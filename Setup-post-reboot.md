@@ -31,16 +31,9 @@ xdg-mime default firefox_firefox.desktop x-scheme-handler/https
 
 ## 3. Crontab (scheduled reboots)
 
-Scheduled reboots are via **root crontab** only (the playbook does not install a systemd reboot timer).
+The main playbook (**ubuntu-setup.yml**) installs root cron entries for reboots at **06:00 and 18:00** and a log line. No manual edit needed unless you want to change the schedule.
 
-- [ ] Edit root crontab: `sudo crontab -e` and add:
-
-```bash
-0 6,18 * * * /sbin/reboot
-0 6,18 * * * echo "Cron executed at $(date)" >> /var/log/cron_test.log
-```
-
-(Reboots at 06:00 and 18:00; the second line logs that cron ran.)
+- [ ] Optional: verify with `sudo crontab -l` (you should see reboot and cron_test.log entries at 0 6,18). To change times, edit with `sudo crontab -e`.
 
 ---
 
@@ -65,11 +58,9 @@ Scheduled reboots are via **root crontab** only (the playbook does not install a
 
 ## 7. Data folders
 
-- [ ] Data folders (`data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`) are created by default in your home directory (`~/data` next to `~/code`) by the playbook and/or post-reboot-verify. If you use a different path (set `app_data_path`), create them manually:
+Data folders are created **automatically** by the main playbook (**ubuntu-setup.yml**) and ensured by **post-reboot-verify.yml** in the **root of your home directory**: `~/data`, `~/data/jpg`, `~/data/video`, `~/data/jpg/no_hook`, `~/data/jpg/no_overlay` (so `~/data` sits next to `~/code`). No manual step needed for the default path.
 
-```bash
-mkdir -p ~/code/king_detector/data/jpg/no_hook ~/code/king_detector/data/jpg/no_overlay ~/code/king_detector/data/video
-```
+- [ ] Optional: verify with `ls ~/data` (you should see `jpg`, `video`; under `jpg`: `no_hook`, `no_overlay`). Only if you overrode `app_data_path` during setup, create the same structure under that path, e.g. `mkdir -p ~/data/jpg/no_hook ~/data/jpg/no_overlay ~/data/video`.
 
 ---
 

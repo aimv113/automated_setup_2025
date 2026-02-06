@@ -488,7 +488,32 @@
         echo "✅ Created data/jpg/video structure at {{ app_data_path }}/data (next to code)" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
-    # Scheduled reboots: use root crontab (0 6,18 * * * /sbin/reboot); see Setup-post-reboot.md
+    # ==========================================================
+    # 5c. SCHEDULED REBOOT (root cron at 6 and 18)
+    # ==========================================================
+    - name: Install root cron for scheduled reboot at 6 and 18
+      cron:
+        name: "Scheduled reboot at 6 and 18"
+        user: root
+        minute: "0"
+        hour: "6,18"
+        job: /sbin/reboot
+
+    - name: Install root cron to log cron execution (6 and 18)
+      cron:
+        name: "Cron test log at 6 and 18"
+        user: root
+        minute: "0"
+        hour: "6,18"
+        job: 'echo "Cron executed at $(date)" >> /var/log/cron_test.log'
+
+    - name: Log scheduled reboot cron
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "5c. SCHEDULED REBOOT (CRON) - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Root crontab: reboot and log at 06:00 and 18:00" >> {{ log_file }}
+        echo "" >> {{ log_file }}
 
     # ==========================================================
     # 6. TAILSCALE
@@ -1689,7 +1714,7 @@
         {% else %}
         echo "- Healthcheck skipped (no URL provided)" >> {{ log_file }}
         {% endif %}
-        echo "- Scheduled reboots: use root crontab (see Setup-post-reboot.md)" >> {{ log_file }}
+        echo "- Scheduled reboots at 6 and 18 (root cron installed by playbook)" >> {{ log_file }}
         echo "- Auto test environment: ~/code/auto_test (Python 3.12 venv)" >> {{ log_file }}
         echo "===================================================================" >> {{ log_file }}
         echo "Completed at: $(date)" >> {{ log_file }}
@@ -1714,7 +1739,7 @@
           {% else %}
           - Healthcheck skipped (no URL provided)
           {% endif %}
-          - Scheduled reboots: use root crontab (see Setup-post-reboot.md)
+          - Scheduled reboots at 6 and 18 (root cron installed by playbook)
           - Auto test environment: ~/code/auto_test (Python 3.12 venv)
 
           Activate venv: source ~/code/auto_test/activate.sh

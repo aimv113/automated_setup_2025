@@ -4,7 +4,7 @@ Ongoing log of decisions made and why.
 
 ## 2026-02
 
-- **Reboot via cron only, not systemd:** User wants twice-daily reboots at 6 and 18; cron is simpler for that. Playbook no longer installs the systemd daily-reboot timer; root crontab is the only scheduled reboot mechanism. Avoids duplicate mechanism at 6 AM.
+- **Reboot via cron only, not systemd:** User wants twice-daily reboots at 6 and 18; cron is simpler for that. Playbook no longer uses a systemd daily-reboot timer. The **main playbook (ubuntu-setup.yml) now installs** the scheduled reboot automatically: root cron entries for `0 6,18 * * * /sbin/reboot` and a matching log line so reboots happen at 06:00 and 18:00 without any manual crontab edit.
 
 - **SSH password lock-down mandatory:** After deploying keys from `ssh-public-keys.txt`, the playbook must set `PasswordAuthentication no` (and related). Not optional; ensures key-only auth once keys are in place.
 
