@@ -65,7 +65,7 @@ Scheduled reboots are via **root crontab** only (the playbook does not install a
 
 ## 7. Data folders
 
-- [ ] Data folders (`data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`) are created by default under `~/code/king_detector` by the playbook and/or post-reboot-verify. If you use a different path, create them manually:
+- [ ] Data folders (`data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`) are created by default in your home directory (`~/data` next to `~/code`) by the playbook and/or post-reboot-verify. If you use a different path (set `app_data_path`), create them manually:
 
 ```bash
 mkdir -p ~/code/king_detector/data/jpg/no_hook ~/code/king_detector/data/jpg/no_overlay ~/code/king_detector/data/video

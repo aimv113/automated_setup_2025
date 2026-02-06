@@ -39,8 +39,8 @@
     # Override this if you want to use a custom URL or local file path
     tensorrt_local_repo_url: ""
     realvnc_version: "7.13.0"
-    # Data folders for app (e.g. king_detector): created by default under this path
-    app_data_path: "{{ user_home }}/code/king_detector"
+    # Data folders (data/jpg/video/...) created under this path; default is home so ~/data sits next to ~/code
+    app_data_path: "{{ user_home }}"
 
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
 
@@ -485,7 +485,7 @@
         echo "===========================================================" >> {{ log_file }}
         echo "5b. DATA FOLDERS - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Created data/jpg/video structure under {{ app_data_path }}" >> {{ log_file }}
+        echo "✅ Created data/jpg/video structure at {{ app_data_path }}/data (next to code)" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
     # Scheduled reboots: use root crontab (0 6,18 * * * /sbin/reboot); see Setup-post-reboot.md

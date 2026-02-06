@@ -4,6 +4,8 @@ Ongoing log of changes to the scripts and playbooks in this repository.
 
 ## 2026-02
 
+- **Data folders path:** Data directories (`data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`) are now created in the home directory by default (`~/data` next to `~/code`) instead of under `~/code/king_detector`. Updated `app_data_path` default from `{{ user_home }}/code/king_detector` to `{{ user_home }}` in **ubuntu-setup.yml** and **post-reboot-verify.yml**. Adjusted log message and task name; updated **DECISIONS.md** and **Setup-post-reboot.md** to describe the new default.
+
 - **ubuntu-setup.yml (Git setup fix and move):** Fixed "unexpected parameter type in action: AnsibleSequence" on the "Set git user.name and user.email" task by changing `command` from a list to a string with `quote` filter: `command: 'git config --global {{ item.key | quote }} {{ item.value | quote }}'`. Moved the entire Git setup block (prompts for user.name/user.email, git config, GitHub SSH key generation, pause to add key) from section 5 (after firewall) to section 17 at the end of the playbook, so the user is prompted for Git identity at the end of the run rather than in the middle. Log and final summary now record "17. GIT SETUP" and include "Git configured (SSH for GitHub)" in the completion message.
 
 - **Plan finalized:** Setup instructions and automation (2026-02). Implementation in progress: repo root CHANGELOG.md and DECISIONS.md created; ubuntu-setup.yml and docs to follow per 2026-02/PLAN.md.

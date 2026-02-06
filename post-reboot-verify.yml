@@ -7,7 +7,7 @@
   vars:
     ssh_user: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
     user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
-    app_data_path: "{{ user_home }}/code/king_detector"
+    app_data_path: "{{ user_home }}"
     log_file: "/var/log/ansible-post-reboot-verify-{{ ansible_date_time.iso8601_basic_short }}.log"
 
   tasks:
@@ -189,7 +189,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Create data/jpg/video structure under app path
+    - name: Create data/jpg/video structure in home (next to code)
       file:
         path: "{{ item }}"
         state: directory
