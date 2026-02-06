@@ -87,6 +87,8 @@ sudo zerotier-cli join 8286ac0e475bfb64
 
 (Get your network ID from the ZeroTier dashboard.)
 
+### **update local machine hosts file with remote name, standard port for now**
+
 ### SSH into machine
 
 ## 3. Install Ansible and clone repository
