@@ -32,6 +32,57 @@
     - debug:
         msg: "Starting app deploy - Log: {{ log_file }}"
 
+    # ==========================================================
+    # 1b. SYSTEM READINESS CHECK (internet, DNS, deploy user)
+    # ==========================================================
+    - name: Check DNS resolution (github.com)
+      command: getent hosts github.com
+      register: check_dns
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if DNS is not working
+      fail:
+        msg: |
+          DNS resolution failed (cannot resolve github.com).
+          Fix network/DNS on this machine (e.g. check /etc/resolv.conf, default route) and re-run the playbook.
+      when: check_dns.rc != 0
+
+    - name: Check connectivity to GitHub (HTTPS)
+      uri:
+        url: https://github.com
+        method: GET
+        status_code: [200, 301, 302]
+        timeout: 10
+      register: check_github
+      failed_when: false
+
+    - name: Fail if GitHub is not reachable
+      fail:
+        msg: |
+          Cannot reach https://github.com (timeout or connection error).
+          Ensure this machine has internet access and re-run the playbook.
+      when: check_github.failed | default(true)
+
+    - name: Check deploy user exists
+      command: "id {{ deploy_user }}"
+      register: check_user
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if deploy user does not exist
+      fail:
+        msg: "Deploy user '{{ deploy_user }}' does not exist. Create the user or set deploy_user and re-run."
+      when: check_user.rc != 0
+
+    - name: Log system readiness OK
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1b. SYSTEM READINESS - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ DNS (github.com), GitHub reachable, user {{ deploy_user }} OK" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
     - name: Prompt for king_detector build version (branch)
       pause:
         prompt: |
@@ -81,7 +132,39 @@
         echo "" >> {{ log_file }}
 
     # ==========================================================
-    # 3. ETHERNET: CAMERA INTERFACES (static IPs)
+    # 3. CLONE king_detector (before netplan so DNS is unchanged)
+    # ==========================================================
+    - name: Ensure code directory exists
+      file:
+        path: "{{ code_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Clone king_detector (branch {{ king_detector_version }})
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_path }}"
+        version: "{{ king_detector_version }}"
+        force: no
+        update: yes
+      become_user: "{{ deploy_user }}"
+      environment:
+        HOME: "{{ user_home }}"
+      when: not (ansible_check_mode | default(false))
+
+    - name: Log clone section
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "3. CLONE king_detector - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Branch: {{ king_detector_version }}" >> {{ log_file }}
+        echo "Path: {{ repo_path }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # ==========================================================
+    # 4. ETHERNET: CAMERA INTERFACES (static IPs)
     # ==========================================================
     - name: Get default route interface (has internet)
       shell: ip route show default 2>/dev/null | awk '{print $5}' | head -1
@@ -125,7 +208,7 @@
       template:
         src: 99-camera-static.yaml.j2
         dest: /etc/netplan/99-camera-static.yaml
-        mode: "0644"
+        mode: "0600"
       when: camera_static_config is defined and camera_static_config | length > 0
 
     - name: Apply netplan (camera static)
@@ -135,44 +218,12 @@
     - name: Log ethernet section
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "3. ETHERNET (camera static) - $(date)" >> {{ log_file }}
+        echo "4. ETHERNET (camera static) - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Camera interfaces: {{ (camera_static_config | default([])) | map(attribute='name') | join(', ') | default('none') }}" >> {{ log_file }}
         {% for c in (camera_static_config | default([])) %}
         echo "  {{ c.name }}: {{ c.address }}" >> {{ log_file }}
         {% endfor %}
-        echo "" >> {{ log_file }}
-
-    # ==========================================================
-    # 4. CLONE king_detector (requested branch)
-    # ==========================================================
-    - name: Ensure code directory exists
-      file:
-        path: "{{ code_dir }}"
-        state: directory
-        owner: "{{ deploy_user }}"
-        group: "{{ deploy_user }}"
-        mode: "0755"
-
-    - name: Clone king_detector (branch {{ king_detector_version }})
-      git:
-        repo: "{{ repo_url }}"
-        dest: "{{ repo_path }}"
-        version: "{{ king_detector_version }}"
-        force: no
-        update: yes
-      become_user: "{{ deploy_user }}"
-      environment:
-        HOME: "{{ user_home }}"
-      when: not (ansible_check_mode | default(false))
-
-    - name: Log clone section
-      shell: |
-        echo "===========================================================" >> {{ log_file }}
-        echo "4. CLONE king_detector - $(date)" >> {{ log_file }}
-        echo "===========================================================" >> {{ log_file }}
-        echo "Branch: {{ king_detector_version }}" >> {{ log_file }}
-        echo "Path: {{ repo_path }}" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
     # ==========================================================
