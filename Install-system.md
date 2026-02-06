@@ -13,7 +13,7 @@ Install and join ZeroTier so you can reach the machine from your laptop (e.g. fr
 
 ```bash
 curl -s https://install.zerotier.com | sudo bash
-sudo zerotier-cli join <your-network-id>
+sudo zerotier-cli join 8286ac0e475bfb64
 ```
 
 (Get your network ID from the ZeroTier dashboard.)
