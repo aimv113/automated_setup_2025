@@ -7,28 +7,7 @@ Do this first so you can get from HPE iLO (or console) to a usable SSH session.
 ### a. BIOS (optional)
 **Auto power on with power:** Power and thermal → auto power on.
 
-### b. Connection: ZeroTier (manual)
 
-Install and join ZeroTier so you can reach the machine from your laptop (e.g. from HPE iLO). Use the **correct** URL (zerotier, not zeroteir):
-
-```bash
-curl -s https://install.zerotier.com | sudo bash
-sudo zerotier-cli join 8286ac0e475bfb64
-```
-
-(Get your network ID from the ZeroTier dashboard.)
-
-### c. SSH: enable and add your key
-
-On the server, enable SSH and add your **public key** so you can use Terminus (or another client) for the rest of the setup:
-
-- Enable SSH: `sudo systemctl start ssh` and `sudo systemctl enable ssh`.
-- Add your key: on the server run `nano ~/.ssh/authorized_keys` and paste your Terminus (or other) public key. If you prefer to edit SSH daemon settings first, run `nano /etc/ssh/sshd_config` (e.g. set Port 33412 if you want).
-- After any SSH config change: `sudo systemctl restart ssh` or reboot.
-
-**Reminder:** If you install **Ubuntu Server**, you can **Send SSH keys** during the installer so the first user already has your key in `~/.ssh/authorized_keys`. Otherwise add the key manually as above. The playbook can also add keys from the repo for you (see step 4); ensure `ssh-public-keys.txt` in the repo contains the keys you want deployed.
-
----
 
 ## 1. Ubuntu
 
@@ -49,7 +28,7 @@ sudo systemctl get-default   # should output: graphical.target
 
 ---
 
-## 2. Configure SSH service (for remote access)
+## 2. Configure SSH service (for remote access) if using ubuntu server this is already done as a server install step - where keys are loaded from github
 
 Enable SSH for remote management:
 
@@ -77,6 +56,31 @@ ssh username@<ip-address>
 ```
 
 ---
+
+### c. SSH: enable and add your key - *not needed if installing server*
+
+On the server, enable SSH and add your **public key** so you can use Terminus (or another client) for the rest of the setup:
+
+- Enable SSH: `sudo systemctl start ssh` and `sudo systemctl enable ssh`.
+- Add your key: on the server run `nano ~/.ssh/authorized_keys` and paste your Terminus (or other) public key. If you prefer to edit SSH daemon settings first, run `nano /etc/ssh/sshd_config` (e.g. set Port 33412 if you want).
+- After any SSH config change: `sudo systemctl restart ssh` or reboot.
+
+**Reminder:** If you install **Ubuntu Server**, you can **Send SSH keys** during the installer so the first user already has your key in `~/.ssh/authorized_keys`. Otherwise add the key manually as above. The playbook can also add keys from the repo for you (see step 4); ensure `ssh-public-keys.txt` in the repo contains the keys you want deployed.
+
+---
+
+### b. Connection: ZeroTier (manual)
+
+Install and join ZeroTier so you can reach the machine from your laptop (e.g. from HPE iLO). Use the **correct** URL (zerotier, not zeroteir):
+
+```bash
+curl -s https://install.zerotier.com | sudo bash
+sudo zerotier-cli join 8286ac0e475bfb64
+```
+
+(Get your network ID from the ZeroTier dashboard.)
+
+### SSH into machine
 
 ## 3. Install Ansible and clone repository
 
