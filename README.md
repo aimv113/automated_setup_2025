@@ -2,24 +2,13 @@
 
 Automated Ubuntu 24.04 setup with NVIDIA GPU support, CUDA, TensorRT, Docker, ML environment, and monitoring. Features a **frozen, reproducible GPU stack** with four layers of protection.
 
-## Prerequisites
-
-**Recommended:** Ubuntu 24.04 Desktop (GNOME)
-- Full desktop environment with GDM3
-- Wayland automatically disabled, Xorg configured
-- NVIDIA display drivers configured for bare metal and VM setups
-
-**Supported:** Ubuntu 24.04 Server + Desktop Environment
-- The playbook gracefully handles LightDM (Xubuntu) or no display manager
-- See "Display Manager Compatibility" section below
-
 ## Initial Ubuntu 24.04 Setup
 
 See **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** for the full setup flow and what is automated vs manual.
 
 The playbook deploys SSH keys from **`ssh-public-keys.txt`** in this repo to the machine’s `~/.ssh/authorized_keys`; ensure that file contains the public keys you want installed.
 
-### 1. Install Ubuntu Desktop
+### 1. Install Ubuntu
 
 [Detailed instructions](Install-system.md)
 
