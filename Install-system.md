@@ -14,6 +14,13 @@ Do this first so you can get from HPE iLO (or console) to a usable SSH session.
 **Option A: Fresh Server Installation (Recommended)**  
 Download Ubuntu 24.04 Server, boot from USB
 
+Make sure to expand home area to 4+ TB
+<img width="798" height="486" alt="image" src="https://github.com/user-attachments/assets/b91ae766-74e0-4882-ad93-b41cf6421497" />
+
+<img width="290" height="112" alt="image" src="https://github.com/user-attachments/assets/3396e9e5-dd4f-4c0f-ac42-a87571b976ff" />
+
+SSH keys from GIT
+
 **Option B: Server + Desktop (Advanced)**  
 If you installed Ubuntu Server, you can add the desktop environment:
 
