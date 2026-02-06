@@ -15,13 +15,17 @@ Automated Ubuntu 24.04 setup with NVIDIA GPU support, CUDA, TensorRT, Docker, ML
 
 ## Initial Ubuntu 24.04 Setup
 
+See **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** for the full setup flow and what is automated vs manual.
+
+The playbook deploys SSH keys from **`ssh-public-keys.txt`** in this repo to the machine’s `~/.ssh/authorized_keys`; ensure that file contains the public keys you want installed.
+
 ### 1. Install Ubuntu Desktop
 
-# [Detailed instructions](Install-system.md)
+[Detailed instructions](Install-system.md)
 
 After reboot, run the verification playbook to confirm everything is working:
 
-# [Post boot instructions](Setup-post-reboot.md)
+[Post boot instructions](Setup-post-reboot.md)
 
 ## What Gets Installed
 

@@ -1,86 +1,84 @@
-### a. BIOS
-**Auto power on with power**
+# Install system
 
-￼- power and thermal
-auto power on
+## 0. Before Ubuntu: access and SSH
 
-### b. Connection
-**Zeroteir**
+Do this first so you can get from HPE iLO (or console) to a usable SSH session.
 
+### a. BIOS (optional)
+**Auto power on with power:** Power and thermal → auto power on.
+
+### b. Connection: ZeroTier (manual)
+
+Install and join ZeroTier so you can reach the machine from your laptop (e.g. from HPE iLO). Use the **correct** URL (zerotier, not zeroteir):
+
+```bash
 curl -s https://install.zerotier.com | sudo bash
-sudo zerotier-cli join xxxxxxxxxxxxxxxxx (from zerotier)
+sudo zerotier-cli join <your-network-id>
+```
 
-Ssh lock down
-sudo nano /etc/ssh/sshd_config
- sudo nano ~/.ssh/authorized_keys
+(Get your network ID from the ZeroTier dashboard.)
 
-### 1. Ubuntu
+### c. SSH: enable and add your key
 
-**Option A: Fresh Installation (Recommended)**
+On the server, enable SSH and add your **public key** so you can use Terminus (or another client) for the rest of the setup:
+
+- Enable SSH: `sudo systemctl start ssh` and `sudo systemctl enable ssh`.
+- Add your key: on the server run `nano ~/.ssh/authorized_keys` and paste your Terminus (or other) public key. If you prefer to edit SSH daemon settings first, run `nano /etc/ssh/sshd_config` (e.g. set Port 33412 if you want).
+- After any SSH config change: `sudo systemctl restart ssh` or reboot.
+
+**Reminder:** If you install **Ubuntu Server**, you can **Send SSH keys** during the installer so the first user already has your key in `~/.ssh/authorized_keys`. Otherwise add the key manually as above. The playbook can also add keys from the repo for you (see step 4); ensure `ssh-public-keys.txt` in the repo contains the keys you want deployed.
+
+---
+
+## 1. Ubuntu
+
+**Option A: Fresh Installation (Recommended)**  
 Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
 
-**Option B: Server + Desktop (Advanced)**
+**Option B: Server + Desktop (Advanced)**  
 If you installed Ubuntu Server, you can add the desktop environment:
+
 ```bash
 sudo apt update
 sudo apt install ubuntu-desktop -y
-
-# Set system to boot into graphical desktop by default
 sudo systemctl set-default graphical.target
-
-# Verify the default target
-sudo systemctl get-default
-# Should output: graphical.target
+sudo systemctl get-default   # should output: graphical.target
 ```
 
-**Note:** After installing the desktop, you may want to reboot before running the playbook to ensure the graphical environment is fully initialized.
+**Note:** After installing the desktop, reboot before running the playbook if needed.
 
-### 2. Configure SSH Service (For Remote Access)
+---
+
+## 2. Configure SSH service (for remote access)
 
 Enable SSH for remote management:
+
 ```bash
 sudo systemctl start ssh
 sudo systemctl enable ssh
 ```
 
-Get your machine's IP address:
+Get your machine's IP address (e.g. via ZeroTier or LAN):
+
 ```bash
 hostname -I
 ```
 
-Connect from your local machine:
+Connect from your local machine (use the port you set, e.g. 33412 if you locked down early):
+
+```bash
+ssh -p 33412 username@<ip-address>
+```
+
+Or if still on default port 22:
+
 ```bash
 ssh username@<ip-address>
 ```
 
-# send ssh keys!!
+---
 
-**Optional: Lock Down SSH (Recommended after key exchange)**
-
-After copying your SSH key to the remote machine, secure SSH:
-```bash
-sudo ufw allow 33412/tcp && \
-if systemctl list-unit-files | grep -q '^ssh.socket'; then \
-  sudo systemctl disable --now ssh.socket && \
-  sudo systemctl mask ssh.socket && \
-  sudo systemctl enable --now ssh.service; \
-fi && \
-sudo sed -i '/^\s*Port\s\+[0-9]\+/d' /etc/ssh/sshd_config && \
-sudo sed -i '1i Port 33412' /etc/ssh/sshd_config && \
-sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
-sudo sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config && \
-sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
-sudo systemctl daemon-reload && \
-sudo systemctl restart ssh && \
-sudo systemctl status ssh --no-pager
-```
-
-This will:
-- Change SSH port to 33412
-- Disable password authentication
-- Enable key-only authentication
-
-### 3. Install Ansible and Clone Repository
+## 3. Install Ansible and clone repository
 
 ```bash
 sudo apt update
@@ -89,39 +87,40 @@ git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025/
 ```
 
-### 4. Run the Setup Playbook
+---
+
+## 4. Run the setup playbook
 
 ```bash
 ansible-playbook ubuntu-setup.yml -K
 ```
 
-**Flags:**
-- `-K`: Prompts for sudo password
-- `-vv`: Verbose output (optional, but helpful for troubleshooting)
+**Flags:** `-K` = sudo password; `-vv` = verbose (optional).
 
-**Interactive Prompt:**
-The playbook will prompt you to create a Healthchecks.io URL (optional monitoring):
-- Create a free account at https://healthchecks.io and paste the ping URL when prompted
-- Or press **Enter** to skip healthcheck monitoring
+**At the start the playbook will:**
+- Show **network info** (Ethernet and WiFi MACs, IPs) for you to record.
+- Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip).
+- Prompt for **boot mode:** 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
+- Prompt for **Git user.name** and **user.email** (for commits on this machine).
+- Generate a **GitHub SSH key** and display it; you will be prompted to add it to GitHub (Settings → SSH and GPG keys → New SSH key), then press Enter to continue.
 
-**What Happens:**
-- ✅ Pre-flight validation (disk space, network)
-- ✅ Downloads NVIDIA driver 580.95.05, CUDA 13.0, TensorRT 10.13.3 to `/opt/installers/`
-- ✅ Installs entire GPU stack from local repositories
-- ✅ Applies four layers of protection (dpkg hold, unattended-upgrades blacklist, APT preferences)
-- ✅ Creates version manifest and SHA-256 checksums
-- ✅ Configures Docker, Tailscale, RealVNC, VS Code
-- ✅ Sets up Python ML environment
-- ✅ Configures daily auto-reboot at 6 AM
+**What the playbook does:**
+- Deploys keys from `ssh-public-keys.txt` in the repo to `~/.ssh/authorized_keys` and configures SSH on port 33412 with **password authentication disabled** (key-only).
+- Pre-flight checks, system update, tools, firewall, Git (SSH default, GitHub key), data folders, Tailscale, RealVNC, VS Code, display/VM detection, NVIDIA driver, CUDA, TensorRT, Docker, Python, Healthchecks, ML environment.
+- **Scheduled reboots** are **not** installed by the playbook; use root crontab (see [Post boot instructions](Setup-post-reboot.md)).
 
-**Duration:** ~20-30 minutes (depends on internet speed for initial downloads)
+**If you need to lock down SSH (port 33412, key-only) before the first playbook run**, do that manually (e.g. edit `/etc/ssh/sshd_config` and `~/.ssh/authorized_keys`, then restart ssh). Otherwise the playbook does it for you after adding keys from the repo.
 
-### 5. Reboot and Verify
+**Duration:** ~20–30 minutes (depends on downloads).
 
-After the initial setup completes, **reboot the system** to load the NVIDIA driver:
+---
+
+## 5. Reboot and verify
+
+After the setup completes, reboot to load the NVIDIA driver:
 
 ```bash
 sudo reboot
 ```
 
-Move onto [Post boot instructions](Setup-post-reboot.md)
+Then follow [Post boot instructions](Setup-post-reboot.md).

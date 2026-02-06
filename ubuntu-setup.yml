@@ -39,13 +39,40 @@
     # Override this if you want to use a custom URL or local file path
     tensorrt_local_repo_url: ""
     realvnc_version: "7.13.0"
-    
+    # Data folders for app (e.g. king_detector): created by default under this path
+    app_data_path: "{{ user_home }}/code/king_detector"
+
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
 
   tasks:
 
     # ==========================================================
-    # 0. PROMPT FOR HEALTHCHECKS URL
+    # 0. NETWORK INFO (for user to record)
+    # ==========================================================
+    - name: Gather network interface info for display
+      shell: |
+        echo "========== NETWORK INFO (record MACs and IPs) =========="
+        ip -br addr show | while read iface state rest; do
+          [ "$iface" = "lo" ] && continue
+          mac=$(ip link show "$iface" 2>/dev/null | grep 'link/ether' | awk '{print $2}')
+          [ -z "$mac" ] && mac="N/A"
+          echo "  $iface: state=$state MAC=$mac"
+          ip -4 addr show "$iface" 2>/dev/null | grep inet | awk '{print "    IP: "$2}'
+        done
+        echo "========================================================="
+      register: network_info_display
+      changed_when: false
+
+    - name: Display network info to user
+      debug:
+        msg: "{{ network_info_display.stdout_lines }}"
+
+    - name: Log that network info was displayed
+      shell: "echo 'Network info (MACs, IPs) displayed to user at start' >> {{ log_file }}"
+      changed_when: false
+
+    # ==========================================================
+    # 0b. PROMPT FOR HEALTHCHECKS URL
     # ==========================================================
     - name: Prompt for Healthchecks.io URL
       pause:
@@ -76,6 +103,26 @@
       set_fact:
         healthchecks_url: "{{ healthchecks_url }}"
       when: healthchecks_url is defined
+
+    # ==========================================================
+    # 0c. PROMPT FOR BOOT MODE (GNOME vs minimal X / king_detector)
+    # ==========================================================
+    - name: Prompt for boot mode
+      pause:
+        prompt: |
+
+          ============================================================
+          BOOT MODE
+          ============================================================
+          Do you want:
+            1) GNOME to open on boot (full desktop)
+            2) Minimal X / king_detector approach (boot to server, no GNOME; xdotool-style)
+          Enter 1 or 2
+      register: boot_mode_prompt
+
+    - name: Set boot mode fact
+      set_fact:
+        boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
 
     # ==========================================================
     # 1. INITIALIZE LOG FILE
@@ -303,33 +350,87 @@
     
     - debug: msg="{{ base_versions.stdout_lines }}"
 
+    - name: Install xdotool and x11-xserver-utils for minimal X / king_detector
+      apt: { name: [xdotool, x11-xserver-utils], state: present }
+      when: boot_mode == 'minimal_x'
+
     # ==========================================================
     # 3. SSH CONFIGURATION
     # ==========================================================
     - name: Install and configure OpenSSH server
       apt: { name: openssh-server, state: present }
 
-    - name: Configure SSH port and authentication
-      blockinfile:
+    - name: Ensure .ssh directory exists for user
+      file:
+        path: "{{ user_home }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+
+    - name: Check if ssh-public-keys.txt exists in repo
+      stat:
+        path: "{{ playbook_dir }}/ssh-public-keys.txt"
+      register: ssh_keys_file
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read SSH keys from file
+      slurp:
+        src: "{{ playbook_dir }}/ssh-public-keys.txt"
+      register: ssh_keys_content
+      when: ssh_keys_file.stat.exists | default(false)
+
+    - name: Deploy SSH keys from ssh-public-keys.txt to authorized_keys
+      authorized_key:
+        user: "{{ ssh_user }}"
+        key: "{{ item }}"
+        state: present
+      loop: "{{ (ssh_keys_content.content | default('') | b64decode).split('\n') | map('trim') | select() | select('search', '^ssh-') | list }}"
+      when:
+        - ssh_keys_content.content is defined
+        - item | length > 0
+
+    - name: Set SSH Port in sshd_config (single place)
+      lineinfile:
         path: /etc/ssh/sshd_config
-        marker: "# {mark} ANSIBLE MANAGED BLOCK"
-        block: |
-          Port {{ ssh_port }}
-          PasswordAuthentication yes
-          PubkeyAuthentication yes
-          PermitRootLogin no
-        validate: '/usr/sbin/sshd -t -f %s'
+        regexp: '^#?\s*Port\s+'
+        line: "Port {{ ssh_port }}"
       notify: restart sshd
-      register: ssh_config
-    
+
+    - name: Set PasswordAuthentication no in sshd_config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?\s*PasswordAuthentication\s+'
+        line: "PasswordAuthentication no"
+      notify: restart sshd
+
+    - name: Set PubkeyAuthentication yes in sshd_config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?\s*PubkeyAuthentication\s+'
+        line: "PubkeyAuthentication yes"
+      notify: restart sshd
+
+    - name: Set PermitRootLogin no in sshd_config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?\s*PermitRootLogin\s+'
+        line: "PermitRootLogin no"
+      notify: restart sshd
+
+    - name: Validate sshd_config
+      command: /usr/sbin/sshd -t -f /etc/ssh/sshd_config
+      changed_when: false
+
     - name: Log SSH configuration
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "3. SSH CONFIGURATION - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ SSH configured on port {{ ssh_port }}" >> {{ log_file }}
+        echo "✅ SSH configured on port {{ ssh_port }} (key-only auth)" >> {{ log_file }}
         echo "" >> {{ log_file }}
-    
+
     - debug: msg="✅ SSH configured on port {{ ssh_port }}"
 
     # ==========================================================
@@ -355,49 +456,123 @@
     - debug: msg="✅ UFW enabled with SSH port {{ ssh_port }} open."
 
     # ==========================================================
-    # 5. AUTO-REBOOT SYSTEMD TIMER
+    # 5. GIT SETUP (SSH default, GitHub key for remote machine)
     # ==========================================================
-    - name: Create daily reboot service
-      copy:
-        dest: /etc/systemd/system/daily-reboot.service
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Daily System Reboot
+    - name: Prompt for Git user name
+      pause:
+        prompt: "Git user.name for commits on this machine"
+      register: git_name_prompt
+      when: git_user_name is not defined
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/sbin/shutdown -r now
+    - name: Set git_user_name from prompt
+      set_fact:
+        git_user_name: "{{ git_name_prompt.user_input | default('', true) | trim }}"
+      when: git_user_name is not defined
 
-    - name: Create daily reboot timer
-      copy:
-        dest: /etc/systemd/system/daily-reboot.timer
-        mode: '0644'
-        content: |
-          [Unit]
-          Description=Daily System Reboot Timer
+    - name: Prompt for Git user email
+      pause:
+        prompt: "Git user.email for commits on this machine"
+      register: git_email_prompt
+      when: git_user_email is not defined
 
-          [Timer]
-          OnCalendar=*-*-* {{ auto_reboot_time }}:00
-          Persistent=true
+    - name: Set git_user_email from prompt
+      set_fact:
+        git_user_email: "{{ git_email_prompt.user_input | default('', true) | trim }}"
+      when: git_user_email is not defined
 
-          [Install]
-          WantedBy=timers.target
-      notify: reload systemd
+    - name: Set git user.name and user.email
+      command: ["git", "config", "--global", "{{ item.key }}", "{{ item.value }}"]
+      loop:
+        - { key: "user.name", value: "{{ git_user_name | default('') }}" }
+        - { key: "user.email", value: "{{ git_user_email | default('') }}" }
+      when: (git_user_name | default('')) | length > 0 and (git_user_email | default('')) | length > 0
+      become_user: "{{ ssh_user }}"
+      changed_when: true
 
-    - name: Enable daily reboot timer
-      systemd: { name: daily-reboot.timer, enabled: yes, state: started, daemon_reload: yes }
-      register: reboot_timer
-    
-    - name: Log auto-reboot configuration
+    - name: Set Git to use SSH instead of HTTPS for GitHub
+      command: git config --global url."git@github.com:".insteadOf "https://github.com/"
+      become_user: "{{ ssh_user }}"
+      changed_when: true
+
+    - name: Ensure .ssh exists for GitHub key
+      file:
+        path: "{{ user_home }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+
+    - name: Generate SSH key for GitHub (ed25519)
+      command: >
+        ssh-keygen -t ed25519 -C "github-{{ ansible_hostname }}"
+        -f {{ user_home }}/.ssh/id_ed25519_github -N ""
+        creates: "{{ user_home }}/.ssh/id_ed25519_github"
+      become_user: "{{ ssh_user }}"
+      changed_when: false
+
+    - name: Read GitHub SSH public key
+      slurp:
+        src: "{{ user_home }}/.ssh/id_ed25519_github.pub"
+      register: github_key_content
+
+    - name: Display GitHub SSH public key for user to add
+      debug:
+        msg: |
+          ========== ADD THIS KEY TO GITHUB ==========
+          Settings → SSH and GPG keys → New SSH key
+          Paste the key below, then press Enter in the playbook to continue.
+          ----------
+          {{ github_key_content.content | b64decode | trim }}
+          ----------
+      when: github_key_content.content is defined
+
+    - name: Pause for user to add key to GitHub
+      pause:
+        prompt: "Add the key above to GitHub, then press Enter to continue"
+      when: github_key_content.content is defined
+
+    - name: Log Git setup
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "5. AUTO-REBOOT SYSTEMD TIMER - $(date)" >> {{ log_file }}
+        echo "5. GIT SETUP - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Daily reboot timer active ({{ auto_reboot_time }})" >> {{ log_file }}
+        echo "✅ Git configured (SSH for GitHub); key in ~/.ssh/id_ed25519_github" >> {{ log_file }}
         echo "" >> {{ log_file }}
-    
-    - debug: msg="✅ Daily reboot timer active ({{ auto_reboot_time }})"
+
+    # ==========================================================
+    # 5b. DATA FOLDERS (videos and jpgs for app)
+    # ==========================================================
+    - name: Ensure app data base path exists
+      file:
+        path: "{{ app_data_path }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+
+    - name: Create app data directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+      loop:
+        - "{{ app_data_path }}/data"
+        - "{{ app_data_path }}/data/jpg"
+        - "{{ app_data_path }}/data/video"
+        - "{{ app_data_path }}/data/jpg/no_hook"
+        - "{{ app_data_path }}/data/jpg/no_overlay"
+
+    - name: Log data folders creation
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "5b. DATA FOLDERS - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "✅ Created data/jpg/video structure under {{ app_data_path }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # Scheduled reboots: use root crontab (0 6,18 * * * /sbin/reboot); see Setup-post-reboot.md
 
     # ==========================================================
     # 6. TAILSCALE
@@ -1513,7 +1688,7 @@
         {% else %}
         echo "- Healthcheck skipped (no URL provided)" >> {{ log_file }}
         {% endif %}
-        echo "- Auto reboot daily at {{ auto_reboot_time }}" >> {{ log_file }}
+        echo "- Scheduled reboots: use root crontab (see Setup-post-reboot.md)" >> {{ log_file }}
         echo "- Auto test environment: ~/code/auto_test (Python 3.12 venv)" >> {{ log_file }}
         echo "===================================================================" >> {{ log_file }}
         echo "Completed at: $(date)" >> {{ log_file }}
@@ -1537,7 +1712,7 @@
           {% else %}
           - Healthcheck skipped (no URL provided)
           {% endif %}
-          - Auto reboot daily at {{ auto_reboot_time }}
+          - Scheduled reboots: use root crontab (see Setup-post-reboot.md)
           - Auto test environment: ~/code/auto_test (Python 3.12 venv)
 
           Activate venv: source ~/code/auto_test/activate.sh
