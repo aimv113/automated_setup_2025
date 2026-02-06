@@ -11,8 +11,8 @@ Do this first so you can get from HPE iLO (or console) to a usable SSH session.
 
 ## 1. Ubuntu
 
-**Option A: Fresh Installation (Recommended)**  
-Download Ubuntu 24.04 Desktop from [ubuntu.com](https://ubuntu.com/download/desktop) and install with default GNOME desktop.
+**Option A: Fresh Server Installation (Recommended)**  
+Download Ubuntu 24.04 Server, boot from USB
 
 **Option B: Server + Desktop (Advanced)**  
 If you installed Ubuntu Server, you can add the desktop environment:
