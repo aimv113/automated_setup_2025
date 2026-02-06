@@ -1667,6 +1667,19 @@
         creates: "{{ user_home }}/.ssh/id_ed25519_github"
       become_user: "{{ ssh_user }}"
 
+    - name: Ensure SSH config uses GitHub key for github.com
+      blockinfile:
+        path: "{{ user_home }}/.ssh/config"
+        create: true
+        mode: '0600'
+        owner: "{{ ssh_user }}"
+        group: "{{ ssh_user }}"
+        block: |
+          Host github.com
+            IdentityFile {{ user_home }}/.ssh/id_ed25519_github
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - GitHub key"
+      become_user: "{{ ssh_user }}"
+
     - name: Read GitHub SSH public key
       slurp:
         src: "{{ user_home }}/.ssh/id_ed25519_github.pub"
@@ -1678,6 +1691,7 @@
           ========== ADD THIS KEY TO GITHUB ==========
           Settings → SSH and GPG keys → New SSH key
           Paste the key below, then press Enter in the playbook to continue.
+          ~/.ssh/config is set so git will use this key (no ssh-agent needed).
           ----------
           {{ github_key_content.content | b64decode | trim }}
           ----------

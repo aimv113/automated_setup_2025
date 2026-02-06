@@ -4,6 +4,8 @@ Ongoing log of changes to the scripts and playbooks in this repository.
 
 ## 2026-02
 
+- **Git/SSH: fix GitHub auth after adding key:** The playbook now configures `~/.ssh/config` with `Host github.com` and `IdentityFile ~/.ssh/id_ed25519_github` so SSH (and git) use the generated key for GitHub without needing `ssh-agent` or `ssh-add`. This fixes errors when cloning or pushing to GitHub after the user adds the key. The pause message notes that no ssh-agent is needed; **Install-system.md** documents the config and adds a troubleshooting line (run `eval "$(ssh-agent -s)"` and `ssh-add ~/.ssh/id_ed25519_github` if needed in GUI or non-interactive shells).
+
 - **Scheduled reboot automated in playbook:** Section "5c. SCHEDULED REBOOT (root cron at 6 and 18)" added to **ubuntu-setup.yml**. The playbook now installs two root cron jobs: reboot at 06:00 and 18:00 (`/sbin/reboot`) and a log line (`echo "Cron executed at $(date)" >> /var/log/cron_test.log`). No manual crontab edit required. Final summary and log text updated to "Scheduled reboots at 6 and 18 (root cron installed by playbook)". **DECISIONS.md** and **Setup-post-reboot.md** updated to state that the playbook installs this by default.
 
 - **Data folders path:** Data directories (`data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`) are now created in the home directory by default (`~/data` next to `~/code`) instead of under `~/code/king_detector`. Updated `app_data_path` default from `{{ user_home }}/code/king_detector` to `{{ user_home }}` in **ubuntu-setup.yml** and **post-reboot-verify.yml**. Adjusted log message and task name; updated **DECISIONS.md** and **Setup-post-reboot.md** to describe the new default.

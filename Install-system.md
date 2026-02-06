@@ -112,6 +112,7 @@ ansible-playbook ubuntu-setup.yml -K
 - Deploys keys from `ssh-public-keys.txt` in the repo to `~/.ssh/authorized_keys` and configures SSH on port 33412 with **password authentication disabled** (key-only).
 - Pre-flight checks, system update, tools, firewall, Git (SSH default, GitHub key), data folders, Tailscale, RealVNC, VS Code, display/VM detection, NVIDIA driver, CUDA, TensorRT, Docker, Python, Healthchecks, ML environment.
 - **Scheduled reboots** are **not** installed by the playbook; use root crontab (see [Post boot instructions](Setup-post-reboot.md)).
+- **Git/SSH:** The playbook sets `~/.ssh/config` so `github.com` uses `~/.ssh/id_ed25519_github`. After adding the key to GitHub, `git clone`/`git push` should work without running `ssh-agent` or `ssh-add`. If you still get errors (e.g. in some GUI or non-interactive shells), run: `eval "$(ssh-agent -s)"` then `ssh-add ~/.ssh/id_ed25519_github`.
 
 **If you need to lock down SSH (port 33412, key-only) before the first playbook run**, do that manually (e.g. edit `/etc/ssh/sshd_config` and `~/.ssh/authorized_keys`, then restart ssh). Otherwise the playbook does it for you after adding keys from the repo.
 
