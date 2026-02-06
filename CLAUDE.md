@@ -9,7 +9,7 @@ Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, 
 **Playbooks:**
 1. `ubuntu-setup.yml` - Main installation (run first)
 2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot)
-3. `2026-02/2/app-deploy.yml` - App deploy (king_detector, crane display); run after post-reboot-verify passes. See [2026-02/2/README.md](2026-02/2/README.md).
+3. `app-deploy.yml` - App deploy (king_detector, crane display); run after post-reboot-verify passes. Documented in [Setup-post-reboot.md](Setup-post-reboot.md) section 9.
 
 ## Running the Playbooks
 

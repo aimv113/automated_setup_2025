@@ -64,36 +64,7 @@ Data folders are created **automatically** by the main playbook (**ubuntu-setup.
 
 ---
 
-## 8. Python venv
-
-- [ ] Set up project venv if needed, e.g.:
-
-```bash
-python -m pip install --upgrade pip setuptools wheel
-pip install ultralytics tensorrt==10.13.3.9 onnxruntime-gpu==1.23.2 cvzone onvif_zeep
-```
-
-(ML environment is already at `~/code/auto_test`; activate with `source ~/code/auto_test/activate.sh`.)
-
----
-
-## 9. rev4.3 / tensor-check
-
-- [ ] In your app repo (e.g. rev4.3): run `tests/tensorRT/tensor-check.py` or equivalent.
-
----
-
-## 10. fwupd popup fix
-
-- [ ] Disable fwupd refresh to avoid the Apport crash popup (optional):
-
-```bash
-sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
-```
-
----
-
-## 11. Touch screen (if applicable)
+## 8. Touch screen (if applicable)
 
 - [ ] Install packages and add Xorg config:
 
@@ -122,9 +93,54 @@ EOF
 
 ---
 
-## 12. Camera settings
+## 9. App deploy (king_detector)
 
-- [ ] Upload/configure camera config for the device. Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`. Website/serving is set up manually.
+Run this **only after** `post-reboot-verify.yml` has passed. It deploys king_detector and prepares the machine for the crane display.
+
+- [ ] Run from anywhere (use the path where you cloned the repo):
+
+```bash
+ansible-playbook ~/automated_setup_2025/app-deploy.yml -K -vv
+```
+
+**Prompts:** You will be asked for the **build version** (branch, e.g. `2.9.0`) and **machine name** (e.g. `Mars2`).
+
+**What it does:** Installs `xdotool` and `x11-xserver-utils`; detects ethernet interfaces with no internet and sets static IPs (192.168.1.200, 192.168.1.201, …) for camera links; clones king_detector from GitHub at the requested branch into `~/code/king_detector`; creates `.env` from the repo’s `admin/env-file.md` (machine name substituted); ensures `~/data` and `~/data/models`; creates venv and installs from `requirementsAutoUbuntu24cuda13.txt`; installs and enables `crane-display-standalone.service`, sets multi-user default, disables GDM; sets timezone to America/Chicago; prints the manual steps below.
+
+**Prerequisites:** GitHub SSH working for user `lift` (e.g. `ssh-add` run for the GitHub key) so the clone succeeds.
+
+**Manual steps after the playbook:**
+
+1. **Rsync models** (from your Mac):  
+   `rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:~/data/models/`
+2. **Camera time:** SSH forward camera, open browser, set camera time to match computer:  
+   `ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>` then open `http://localhost:8080`.
+3. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
+4. **Start crane** (on the machine when ready):  
+   `sudo systemctl start crane-display-standalone.service`  
+   Logs: `sudo journalctl -u crane-display-standalone -f`
+
+---
+
+## 10. Camera settings
+
+- [ ] After app deploy (and once camera is reachable): upload/configure camera config. Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`. Website/serving is set up manually.
+
+---
+
+## 11. rev4.3 / tensor-check
+
+- [ ] In your app repo (e.g. rev4.3): run `tests/tensorRT/tensor-check.py` or equivalent.
+
+---
+
+## 12. fwupd popup fix
+
+- [ ] Disable fwupd refresh to avoid the Apport crash popup (optional):
+
+```bash
+sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
+```
 
 ---
 
