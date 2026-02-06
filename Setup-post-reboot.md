@@ -100,7 +100,7 @@ Run this **only after** `post-reboot-verify.yml` has passed. It deploys king_det
 - [ ] Run from anywhere (use the path where you cloned the repo):
 
 ```bash
-ansible-playbook ~/automated_setup_2025/app-deploy.yml -K -vv
+ansible-playbook ~/automated_setup_2025/app-deploy.yml -K
 ```
 
 **Prompts:** You will be asked for the **build version** (branch, e.g. `2.9.0`) and **machine name** (e.g. `Mars2`).
