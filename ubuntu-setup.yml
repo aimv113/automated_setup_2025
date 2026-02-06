@@ -1638,9 +1638,9 @@
       command: >
         ssh-keygen -t ed25519 -C "github-{{ ansible_hostname }}"
         -f {{ user_home }}/.ssh/id_ed25519_github -N ""
+      args:
         creates: "{{ user_home }}/.ssh/id_ed25519_github"
       become_user: "{{ ssh_user }}"
-      changed_when: false
 
     - name: Read GitHub SSH public key
       slurp:

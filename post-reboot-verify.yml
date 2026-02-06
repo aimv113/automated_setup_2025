@@ -116,7 +116,7 @@
         echo "===========================================================" >> {{ log_file }}
         echo "4. ML PACKAGES INSTALLATION - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Installed PyTorch with CUDA 12.1 support" >> {{ log_file }}
+        echo "✅ Installed PyTorch with CUDA 13.0 support" >> {{ log_file }}
         echo "✅ Installed ultralytics, nvidia-tensorrt, onnxruntime-gpu" >> {{ log_file }}
         echo "" >> {{ log_file }}
 

@@ -56,7 +56,7 @@ After reboot, run the verification playbook to confirm everything is working:
 - **SSH** on custom port 33412 (key-only authentication)
 - **UFW** firewall configured
 - **Daily auto-reboot** at 6:00 AM
-- **Healthchecks.io** monitoring (5 min interval, optional)
+- **Healthchecks.io** monitoring (10 min interval, optional; allows 5 min pings + buffer)
 
 ### Display Manager Compatibility
 
@@ -87,7 +87,7 @@ tensorrt_install_method: "local"     # Installation method
 **Installation methods:**
 - `"local"` - Download and use local repository (recommended - guarantees version availability)
 - `"network"` - Use CUDA network repository (only works while version available)
-- `"auto"` - Try local first, fall back to network if download fails
+- `"auto"` - Try network first, fall back to local if download fails
 
 **Auto-constructed URL:**
 ```
@@ -249,5 +249,4 @@ sudo reboot
 ```
 
 **For complete upgrade procedures**, see: [REPRODUCIBILITY_STRATEGY.md](REPRODUCIBILITY_STRATEGY.md)
-
 
