@@ -17,7 +17,8 @@ This document describes the full setup flow, what is automated, and what stays m
    - **Git user.name / user.email** for commits on this machine.
    - **GitHub SSH key** – the playbook generates a key and displays it; add it to GitHub (Settings → SSH and GPG keys → New SSH key), then press Enter to continue.
 6. **Reboot** – `sudo reboot`.
-7. **Post-reboot checklist** – Run `post-reboot-verify.yml`, then work through [Setup-post-reboot.md](Setup-post-reboot.md) (crontab, VNC, VS Code, data folders, camera settings, etc.).
+7. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass).
+8. **App deploy (optional)** – To deploy king_detector and crane display: `ansible-playbook 2026-02/2/app-deploy.yml -K -vv`. See [2026-02/2/README.md](2026-02/2/README.md). Then work through [Setup-post-reboot.md](Setup-post-reboot.md) (crontab, VNC, VS Code, data folders, camera settings, etc.).
 
 ---
 
