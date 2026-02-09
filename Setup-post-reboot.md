@@ -48,7 +48,11 @@ xdg-mime default firefox_firefox.desktop x-scheme-handler/https
 
 The main playbook (**ubuntu-setup.yml**) installs root cron entries for reboots at **06:00 and 18:00** and a log line. No manual edit needed unless you want to change the schedule.
 
-- [ ] Optional: verify with `sudo crontab -l` (you should see reboot and cron_test.log entries at 0 6,18). To change times, edit with `sudo crontab -e`.
+verify with 
+```bash
+sudo crontab -l
+```
+(you should see reboot and cron_test.log entries at 0 6,18). To change times, edit with `sudo crontab -e`.
 
 ---
 
@@ -60,14 +64,7 @@ The main playbook (**ubuntu-setup.yml**) installs root cron entries for reboots 
 
 ## 5. VS Code and Git
 
-- [ ] Open VS Code and log into Git online.
 - [ ] Install extensions (e.g. Python, Data preview, indent rainbow, rainbow csv).
-
----
-
-## 6. Clone repo
-
-- [ ] Clone your app repo(s) if different from the setup repo (e.g. `~/code/king_detector`). The playbook configures Git with SSH for GitHub and creates a key you added to GitHub, so you can pull/push via SSH.
 
 ---
 
@@ -75,7 +72,11 @@ The main playbook (**ubuntu-setup.yml**) installs root cron entries for reboots 
 
 Data folders are created **automatically** by the main playbook (**ubuntu-setup.yml**) and ensured by **post-reboot-verify.yml** in the **root of your home directory**: `~/data`, `~/data/jpg`, `~/data/video`, `~/data/jpg/no_hook`, `~/data/jpg/no_overlay` (so `~/data` sits next to `~/code`). No manual step needed for the default path.
 
-- [ ] Optional: verify with `ls ~/data` (you should see `jpg`, `video`; under `jpg`: `no_hook`, `no_overlay`). Only if you overrode `app_data_path` during setup, create the same structure under that path, e.g. `mkdir -p ~/data/jpg/no_hook ~/data/jpg/no_overlay ~/data/video`.
+verify with 
+```bash
+ls ~/data` 
+```
+(you should see `jpg`, `video`; under `jpg`: `no_hook`, `no_overlay`). Only if you overrode `app_data_path` during setup, create the same structure under that path, e.g. `mkdir -p ~/data/jpg/no_hook ~/data/jpg/no_overlay ~/data/video`.
 
 ---
 
