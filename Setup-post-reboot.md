@@ -2,6 +2,21 @@
 
 After running the main setup playbook and rebooting, work through this checklist.
 
+## a. Modify ssh standard port in .ssh/config
+```bash
+sudo nano .ssh/config
+```
+
+## b. add / update IP in Terminus & key to remote
+```bash
+ip a
+sudo nano ~/.ssh/authorized_keys
+```
+
+## c. sanity check ssh config on remote
+```bash
+sudo nano /etc/ssh/sshd_config
+```
 ---
 
 ## 1. Verify playbook
