@@ -12,7 +12,7 @@ The playbook deploys SSH keys from **`ssh-public-keys.txt`** in this repo to the
 
 [Detailed instructions](Install-system.md)
 
-After reboot, run the verification playbook to confirm everything is working:
+After reboot, run the verification playbook to confirm everything is working. The verification playbook also configures **networking** (single netplan: DHCP + camera static) and **timezone** (America/Chicago). Machine setup is complete after that. For king_detector and crane display, run the setup script in the king_detector repo (see that repo’s admin/SETUP.md).
 
 [Post boot instructions](Setup-post-reboot.md)
 

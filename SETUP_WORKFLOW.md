@@ -17,8 +17,8 @@ This document describes the full setup flow, what is automated, and what stays m
    - **Git user.name / user.email** for commits on this machine.
    - **GitHub SSH key** – the playbook generates a key and displays it; add it to GitHub (Settings → SSH and GPG keys → New SSH key), then press Enter to continue.
 6. **Reboot** – `sudo reboot`.
-7. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass).
-8. **App deploy (optional)** – To deploy king_detector and crane display: `ansible-playbook ~/automated_setup_2025/app-deploy.yml -K -vv` (run from anywhere). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
+7. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass). Machine setup is then **complete** (networking and timezone are set by this playbook).
+8. **King_detector setup** – Run the setup script in the king_detector repo (see that repo’s admin/SETUP.md). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
 
 ---
 
@@ -36,9 +36,11 @@ This document describes the full setup flow, what is automated, and what stays m
 - Keys from `ssh-public-keys.txt` deployed to `~/.ssh/authorized_keys`.
 - SSH: port 33412, key-only (PasswordAuthentication no), single-place config (no duplicate lines).
 - Git: user.name, user.email, SSH default for GitHub (`url.insteadOf`), GitHub SSH key generated and displayed; you add the key to GitHub once.
-- Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay` under `~/code/king_detector` (and in post-reboot-verify).
+- Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay` under `~/` (post-reboot-verify).
 - Network info (MACs, IPs) printed at playbook start for recording.
-- No systemd reboot timer; scheduled reboots via root crontab only (you set this in post-reboot).
+- **Networking (netplan):** post-reboot-verify writes a single netplan (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …) and removes 50-cloud-init to avoid conflicts.
+- **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
+- No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).
 
 ---
 

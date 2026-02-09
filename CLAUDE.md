@@ -4,12 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, ML environment, and monitoring. Designed for bare metal and VM installations with automatic environment detection.
+Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, ML environment, and monitoring. Designed for bare metal and VM installations with automatic environment detection. Machine setup is **complete** after `post-reboot-verify.yml` (which includes networking and timezone). King_detector program setup (venv, crane-display service, etc.) lives in the king_detector repo and is run from there.
 
 **Playbooks:**
 1. `ubuntu-setup.yml` - Main installation (run first)
-2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot)
-3. `app-deploy.yml` - App deploy (king_detector, crane display); run after post-reboot-verify passes. Documented in [Setup-post-reboot.md](Setup-post-reboot.md) section 9.
+2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot). Also configures **networking** (single netplan 99-machine-network: DHCP + camera static; 50-cloud-init removed) and **timezone** (default America/Chicago). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9 for king_detector setup (script in king_detector repo).
 
 ## Running the Playbooks
 

@@ -9,6 +9,9 @@
     user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
     app_data_path: "{{ user_home }}"
     log_file: "/var/log/ansible-post-reboot-verify-{{ ansible_date_time.iso8601_basic_short }}.log"
+    camera_static_start: 200
+    machine_network_remove_cloud_init: true
+    machine_timezone: "America/Chicago"
 
   tasks:
 
@@ -204,7 +207,132 @@
         - "{{ app_data_path }}/data/jpg/no_overlay"
 
     # ==========================================================
-    # 8. FINAL SUMMARY
+    # 8. NETWORKING (single netplan: DHCP + camera static)
+    # ==========================================================
+    - name: Get default route interface (has internet)
+      shell: ip route show default 2>/dev/null | awk '{print $5}' | head -1
+      register: default_route_iface
+      changed_when: false
+      failed_when: false
+
+    - name: List UP ethernet interfaces (exclude lo)
+      shell: |
+        ip -br link show | awk '$2=="UP" && $1!="lo" {print $1}'
+      register: up_interfaces_raw
+      changed_when: false
+
+    - name: Set internet interface (default route or single interface fallback)
+      set_fact:
+        internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '') }}"
+
+    - name: Build list of camera interfaces (UP, no internet; exclude internet interface to avoid duplicate)
+      shell: |
+        default_if="{{ default_route_iface.stdout }}"
+        internet_if="{{ internet_interface | default('') }}"
+        for iface in {{ up_interfaces_raw.stdout_lines | default([]) | join(' ') }}; do
+          [ -z "$iface" ] && continue
+          [ "$iface" = "$default_if" ] && continue
+          [ -n "$internet_if" ] && [ "$iface" = "$internet_if" ] && continue
+          if ! ping -c 1 -W 2 -I "$iface" 8.8.8.8 >/dev/null 2>&1; then
+            echo "$iface"
+          fi
+        done
+      register: camera_ifaces_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Set camera_interfaces fact
+      set_fact:
+        camera_interfaces: "{{ camera_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list }}"
+
+    - name: Build camera static config (name and address per interface)
+      set_fact:
+        camera_static_config: "{{ camera_static_config | default([]) + [{'name': item, 'address': '192.168.1.' ~ (camera_static_start + (camera_static_config | default([]) | length)) ~ '/24'}] }}"
+      loop: "{{ camera_interfaces }}"
+      when: camera_interfaces | length > 0
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Warn when multiple interfaces but no default route (skipping netplan)
+      debug:
+        msg: "No default route and multiple UP interfaces; skipping netplan. Fix network or set default route and re-run."
+      when: (default_route_iface.stdout | length == 0) and (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length > 1)
+
+    - name: Set machine_netplan_ethernets (internet DHCP + camera static)
+      set_fact:
+        machine_netplan_ethernets: "{{ ([{'name': internet_interface, 'dhcp4': True}] if internet_interface else []) + (camera_static_config | default([]) | map('combine', {'dhcp4': False}) | list) }}"
+      when: (default_route_iface.stdout | length > 0) or (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
+
+    - name: Stat 50-cloud-init.yaml
+      stat:
+        path: /etc/netplan/50-cloud-init.yaml
+      register: cloud_init_netplan_stat
+      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    - name: Backup 50-cloud-init.yaml if present
+      copy:
+        src: /etc/netplan/50-cloud-init.yaml
+        dest: /etc/netplan/50-cloud-init.yaml.bak
+        remote_src: yes
+      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0 and (cloud_init_netplan_stat is defined and cloud_init_netplan_stat.stat.exists | default(false))
+
+    - name: Remove 50-cloud-init.yaml
+      file:
+        path: /etc/netplan/50-cloud-init.yaml
+        state: absent
+      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    - name: Write netplan 99-machine-network.yaml
+      template:
+        src: 99-machine-network.yaml.j2
+        dest: /etc/netplan/99-machine-network.yaml
+        mode: "0600"
+      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    - name: Apply netplan
+      command: netplan generate && netplan apply
+      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    - name: Log networking section
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "8. NETWORKING (netplan) - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Internet (DHCP): {{ internet_interface | default('none') }}" >> {{ log_file }}
+        echo "Camera (static): {{ (camera_static_config | default([])) | map(attribute='name') | join(', ') | default('none') }}" >> {{ log_file }}
+        {% for c in (camera_static_config | default([])) %}
+        echo "  {{ c.name }}: {{ c.address }}" >> {{ log_file }}
+        {% endfor %}
+        echo "" >> {{ log_file }}
+      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    - name: Log networking skipped (no default route with multiple interfaces, or no interfaces)
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "8. NETWORKING - skipped (no default route with multiple interfaces, or no interfaces)" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+      when: machine_netplan_ethernets is not defined or machine_netplan_ethernets | length == 0
+
+    # ==========================================================
+    # 9. TIMEZONE
+    # ==========================================================
+    - name: Set timezone
+      timezone:
+        name: "{{ machine_timezone }}"
+
+    - name: Log timezone section
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "9. TIMEZONE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "{{ machine_timezone }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - debug:
+        msg: "If this machine is not in Central, set timezone manually: sudo timedatectl set-timezone <zone>"
+
+    # ==========================================================
+    # 10. FINAL SUMMARY
     # ==========================================================
     - name: Log verification summary
       shell: |
@@ -213,7 +341,8 @@
         echo "===========================================================" >> {{ log_file }}
         echo "✅ All verifications passed!" >> {{ log_file }}
         echo "" >> {{ log_file }}
-        echo "Your system is ready for ML workloads." >> {{ log_file }}
+        echo "Machine setup complete: networking (netplan), timezone ({{ machine_timezone }})." >> {{ log_file }}
+        echo "Your system is ready for ML workloads and for king_detector setup (see king_detector repo)." >> {{ log_file }}
         echo "" >> {{ log_file }}
         echo "To use the ML environment:" >> {{ log_file }}
         echo "  source ~/code/auto_test/activate.sh" >> {{ log_file }}
@@ -225,6 +354,8 @@
         msg: |
           ✅ ✅ ✅ ALL VERIFICATIONS PASSED! ✅ ✅ ✅
 
+          Machine setup complete: networking (netplan), timezone ({{ machine_timezone }}).
+
           Your system is fully configured and ready for ML workloads:
           • NVIDIA Driver: Loaded
           • CUDA Toolkit: Available
@@ -232,8 +363,12 @@
           • ML Packages: Installed (PyTorch, ultralytics, TensorRT, onnxruntime-gpu)
           • PyTorch CUDA Support: Enabled
           • TensorRT: Verified
+          • Networking: 99-machine-network (DHCP + camera static)
+          • Timezone: {{ machine_timezone }}
 
           To use the ML environment:
             source ~/code/auto_test/activate.sh
+
+          Next: run the king_detector setup script (see king_detector repo admin/SETUP.md).
 
           Log file: {{ log_file }}

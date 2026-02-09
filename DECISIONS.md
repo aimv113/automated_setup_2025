@@ -22,4 +22,6 @@ Ongoing log of decisions made and why.
 
 - **README note for ssh-public-keys.txt:** One sentence in README that this file is used by the playbook to deploy keys to `authorized_keys`. File itself left as-is (key only, no comment).
 
+- **Machine setup complete after post-reboot-verify:** “Machine setup” is finished when `post-reboot-verify.yml` has passed. That playbook now includes **networking** (single netplan: default-route interface DHCP, other UP ethernet interfaces static 192.168.1.200, .201, …; 50-cloud-init removed to avoid conflicts) and **timezone** (e.g. America/Chicago, configurable). App/program setup (king_detector venv, crane-display service, .env, etc.) lives in the king_detector repo and is run from there via a setup script; this repo no longer includes app-deploy.yml.
+
 *(Implementation completed 2026-02; see CHANGELOG.md for script changes.)*

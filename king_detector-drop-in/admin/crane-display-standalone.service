@@ -1,12 +1,10 @@
 [Unit]
 Description=Crane ZOOM Display (dedicated X server, no login)
 After=multi-user.target systemd-logind.service
-# Ensure display and input are available
 After=local-fs.target
 
 [Service]
 Type=simple
-# Run as root so X can open vt7; xinitrc runs the Python app as lift via runuser
 User=root
 Group=root
 
@@ -15,10 +13,9 @@ Environment="QT_QPA_PLATFORM=xcb"
 Environment="CUDA_VISIBLE_DEVICES=0"
 Environment="PYTHONUNBUFFERED=1"
 Environment="FORCE_COLOR=1"
-WorkingDirectory={{ user_home }}/code/king_detector
+WorkingDirectory=/home/lift/code/king_detector
 
-# Start X on vt7 with crane display as the only client. When the app exits, xinit exits and we restart.
-ExecStart=/usr/bin/xinit {{ user_home }}/code/king_detector/admin/xinitrc-crane -- /usr/lib/xorg/Xorg :0 vt7 -nolisten tcp
+ExecStart=/usr/bin/xinit /home/lift/code/king_detector/admin/xinitrc-crane -- /usr/lib/xorg/Xorg :0 vt7 -nolisten tcp
 
 Restart=always
 RestartSec=5

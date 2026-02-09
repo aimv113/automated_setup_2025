@@ -13,7 +13,7 @@ cd ~/automated_setup_2025
 ansible-playbook post-reboot-verify.yml -K
 ```
 
-**Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages.
+**Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (single netplan: DHCP + camera static), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
 
 ---
 
@@ -93,40 +93,40 @@ EOF
 
 ---
 
-## 9. App deploy (king_detector)
+## 9. King_detector setup (crane display)
 
-Run this **only after** `post-reboot-verify.yml` has passed. It deploys king_detector and prepares the machine for the crane display.
+Run this **only after** `post-reboot-verify.yml` has passed. Program setup (king_detector, crane display) is done by a **setup script in the king_detector repo**, not by this repo.
 
-- [ ] Run from anywhere (use the path where you cloned the repo):
+- [ ] On the machine, clone king_detector if needed, then run the setup script from the king_detector repo. See the king_detector repo’s **admin/SETUP.md** (or equivalent) for the exact command, e.g.:
 
 ```bash
-ansible-playbook ~/automated_setup_2025/app-deploy.yml -K
+# Example (adjust path/branch to match king_detector repo docs):
+cd ~/code/king_detector   # or clone first
+sudo ./admin/setup-crane-machine.sh
+# Or with env vars: MACHINE_NAME=Mars2 KING_DETECTOR_BRANCH=2.9.0 sudo -E ./admin/setup-crane-machine.sh
 ```
 
-**Prompts:** You will be asked for the **build version** (branch, e.g. `2.9.0`) and **machine name** (e.g. `Mars2`).
+**What the script does:** Ensures repo at `~/code/king_detector`; creates `.env` from `admin/env-file.md` (machine name substituted); ensures `~/data` and `~/data/models`; creates venv and installs from `requirementsAutoUbuntu24cuda13.txt` (and lap); installs xinit if missing; installs and enables `crane-display-standalone.service`; sets multi-user default, disables GDM; prints the manual steps below.
 
-**What it does:** Installs `xdotool` and `x11-xserver-utils`; detects ethernet interfaces with no internet and sets static IPs (192.168.1.200, 192.168.1.201, …) for camera links; clones king_detector from GitHub at the requested branch into `~/code/king_detector`; creates `.env` from the repo’s `admin/env-file.md` (machine name substituted); ensures `~/data` and `~/data/models`; creates venv and installs from `requirementsAutoUbuntu24cuda13.txt`; installs and enables `crane-display-standalone.service`, sets multi-user default, disables GDM; sets timezone to America/Chicago; prints the manual steps below.
+**Prerequisites:** Machine already ran `ubuntu-setup.yml` and `post-reboot-verify.yml` (networking and timezone are already set). GitHub SSH working for user `lift` if the script clones the repo.
 
-**Prerequisites:** GitHub SSH working for user `lift` (e.g. `ssh-add` run for the GitHub key) so the clone succeeds.
-
-**Manual steps after the playbook:**
+**Manual steps after the script:**
 
 1. **Rsync models** (from your Mac):  
    `rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:~/data/models/`
 2. **Camera time:** SSH forward camera, open browser, set camera time to match computer:  
    `ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>` then open `http://localhost:8080`.
 
-MAKE SURE TO CHECK TIMEZONE OF REMOTE MACHINE AND CAMERA MATCH
-   
-4. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
-5. **Start crane** (on the machine when ready):  
+   Make sure timezone of remote machine and camera match (timezone is set by post-reboot-verify).
+3. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
+4. **Start crane** (on the machine when ready):  
    `sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f`
 
 ---
 
 ## 10. Camera settings
 
-- [ ] After app deploy (and once camera is reachable): upload/configure camera config. Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`. Website/serving is set up manually.
+- [ ] After king_detector setup (and once camera is reachable): upload/configure camera config. Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`. Website/serving is set up manually.
 
 ---
 
