@@ -68,19 +68,8 @@ sudo crontab -l
 
 ---
 
-## 7. Data folders
 
-Data folders are created **automatically** by the main playbook (**ubuntu-setup.yml**) and ensured by **post-reboot-verify.yml** in the **root of your home directory**: `~/data`, `~/data/jpg`, `~/data/video`, `~/data/jpg/no_hook`, `~/data/jpg/no_overlay` (so `~/data` sits next to `~/code`). No manual step needed for the default path.
-
-verify with 
-```bash
-ls ~/data` 
-```
-(you should see `jpg`, `video`; under `jpg`: `no_hook`, `no_overlay`). Only if you overrode `app_data_path` during setup, create the same structure under that path, e.g. `mkdir -p ~/data/jpg/no_hook ~/data/jpg/no_overlay ~/data/video`.
-
----
-
-## 8. Touch screen (if applicable)
+## 6. Touch screen (if applicable)
 
 - [ ] Install packages and add Xorg config:
 
@@ -109,7 +98,7 @@ EOF
 
 ---
 
-## 9. King_detector setup (crane display)
+## 7. King_detector setup (crane display)
 
 Vew instructions at [King codebase](https://github.com/davematthewsband/king_detector/tree/2.9.0)
 
