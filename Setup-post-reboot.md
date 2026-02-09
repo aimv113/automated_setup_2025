@@ -95,20 +95,7 @@ EOF
 
 ## 9. King_detector setup (crane display)
 
-Run this **only after** `post-reboot-verify.yml` has passed. Program setup (king_detector, crane display) is done by a **setup script in the king_detector repo**, not by this repo.
-
-- [ ] On the machine, clone king_detector if needed, then run the setup script from the king_detector repo. See the king_detector repo’s **admin/SETUP.md** (or equivalent) for the exact command, e.g.:
-
-```bash
-# Example (adjust path/branch to match king_detector repo docs):
-cd ~/code/king_detector   # or clone first
-sudo ./admin/setup-crane-machine.sh
-# Or with env vars: MACHINE_NAME=Mars2 KING_DETECTOR_BRANCH=2.9.0 sudo -E ./admin/setup-crane-machine.sh
-```
-
-**What the script does:** Ensures repo at `~/code/king_detector`; creates `.env` from `admin/env-file.md` (machine name substituted); ensures `~/data` and `~/data/models`; creates venv and installs from `requirementsAutoUbuntu24cuda13.txt` (and lap); installs xinit if missing; installs and enables `crane-display-standalone.service`; sets multi-user default, disables GDM; prints the manual steps below.
-
-**Prerequisites:** Machine already ran `ubuntu-setup.yml` and `post-reboot-verify.yml` (networking and timezone are already set). GitHub SSH working for user `lift` if the script clones the repo.
+Vew instructions at [King codebase](https://github.com/davematthewsband/king_detector/tree/2.9.0)
 
 **Manual steps after the script:**
 
