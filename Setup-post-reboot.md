@@ -2,6 +2,11 @@
 
 After running the main setup playbook and rebooting, work through this checklist.
 
+Add back up IP route, follow link online and connect with DMB git hub account
+```bash
+sudo tailscale up
+```
+
 ## a. Modify ssh standard port in .ssh/config
 ```bash
 sudo nano .ssh/config
