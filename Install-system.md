@@ -85,9 +85,9 @@ curl -s https://install.zerotier.com | sudo bash
 sudo zerotier-cli join 8286ac0e475bfb64
 ```
 
-(Get your network ID from the ZeroTier dashboard.)
 
 ### **!! update local machine hosts file with remote name, standard port for now !!**
+sudo nano .ssh/config
 
 SSH into machine
 
