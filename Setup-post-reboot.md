@@ -100,7 +100,7 @@ EOF
 
 ## 7. King_detector setup (crane display)
 
-Vew instructions at [King codebase](https://github.com/davematthewsband/king_detector/tree/2.9.0)
+# Vew instructions at [King codebase](https://github.com/davematthewsband/king_detector/tree/2.9.0)
 
 **Manual steps after the script:**
 
