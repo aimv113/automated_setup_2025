@@ -7,7 +7,7 @@ Add back up IP route, follow link online and connect with DMB git hub account
 sudo tailscale up
 ```
 
-## a. Modify ssh standard port in .ssh/config
+## a. Modify ssh standard port in .ssh/config (ON LOCAL MACHINE)
 ```bash
 sudo nano .ssh/config
 ```
