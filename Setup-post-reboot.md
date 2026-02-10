@@ -118,6 +118,10 @@ EOF
 3. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
 4. **Start crane** (on the machine when ready):  
    `sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f`
+5. **FFMPEG** :  
+   ```bash
+   sudo apt update && sudo apt install ffmpeg
+   ```
 
 ---
 
