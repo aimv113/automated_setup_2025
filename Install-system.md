@@ -95,6 +95,7 @@ SSH into machine
 
 ```bash
 sudo apt update
+sudo apt upgrade -y
 sudo apt install ansible git -y
 git clone git@github.com:aimv113/automated_setup_2025.git
 cd automated_setup_2025/
