@@ -120,7 +120,7 @@ EOF
    `sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f`
 5. **FFMPEG** :  
    ```bash
-   sudo apt update && sudo apt install ffmpeg
+   sudo apt update && sudo apt install ffmpeg -y
    ```
 
 ---
