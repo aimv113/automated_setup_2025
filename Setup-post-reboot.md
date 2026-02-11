@@ -33,7 +33,9 @@ cd ~/automated_setup_2025
 ansible-playbook post-reboot-verify.yml -K
 ```
 
-**Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (single netplan: DHCP + camera static), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
+**Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
+
+**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook creates two NM profiles (no bring-up at create): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). Idempotent **modify** tasks keep settings aligned each run. Optional non-fatal connect only when SSID is visible; if OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. The network is open (no password). To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
 
 ---
 

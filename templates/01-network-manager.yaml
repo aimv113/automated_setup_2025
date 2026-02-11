@@ -1,0 +1,5 @@
+# Set netplan default renderer to NetworkManager (WiFi, ethernet).
+# Post-reboot-verify writes this; 99-machine-network.yaml adds ethernet config.
+network:
+  version: 2
+  renderer: NetworkManager

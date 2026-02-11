@@ -8,7 +8,7 @@ Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, 
 
 **Playbooks:**
 1. `ubuntu-setup.yml` - Main installation (run first)
-2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot). Also configures **networking** (single netplan 99-machine-network: DHCP + camera static; 50-cloud-init removed) and **timezone** (default America/Chicago). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9 for king_detector setup (script in king_detector repo).
+2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot). Also configures **networking** via **NetworkManager** + netplan (99-machine-network: DHCP + camera static; optional WiFi SSID; 50-cloud-init removed) and **timezone** (default America/Chicago). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9 for king_detector setup (script in king_detector repo).
 
 ## Running the Playbooks
 

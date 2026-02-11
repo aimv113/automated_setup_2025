@@ -12,6 +12,8 @@
     camera_static_start: 200
     machine_network_remove_cloud_init: true
     machine_timezone: "America/Chicago"
+    # WiFi: connect automatically to this SSID via nmcli (default OFFICEGST; open network, no password).
+    machine_wifi_ssid: "OFFICEGST"
 
   tasks:
 
@@ -207,8 +209,27 @@
         - "{{ app_data_path }}/data/jpg/no_overlay"
 
     # ==========================================================
-    # 8. NETWORKING (single netplan: DHCP + camera static)
+    # 8. NETWORKING (NetworkManager + netplan: DHCP + camera static + optional WiFi)
+    # Netplan is configured with renderer: NetworkManager; on Ubuntu Server
+    # NetworkManager is not installed by default (systemd-networkd is), so we install it.
     # ==========================================================
+    - name: Ensure NetworkManager is installed (server default is systemd-networkd; we use NM as netplan renderer)
+      apt:
+        name: network-manager
+        state: present
+
+    - name: Ensure NetworkManager is enabled and started
+      systemd:
+        name: NetworkManager
+        state: started
+        enabled: true
+
+    - name: Write netplan 01-network-manager.yaml (renderer NetworkManager)
+      template:
+        src: 01-network-manager.yaml
+        dest: /etc/netplan/01-network-manager.yaml
+        mode: "0600"
+
     - name: Get default route interface (has internet)
       shell: ip route show default 2>/dev/null | awk '{print $5}' | head -1
       register: default_route_iface
@@ -263,55 +284,131 @@
         machine_netplan_ethernets: "{{ ([{'name': internet_interface, 'dhcp4': True}] if internet_interface else []) + (camera_static_config | default([]) | map('combine', {'dhcp4': False}) | list) }}"
       when: (default_route_iface.stdout | length > 0) or (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
 
+    - name: Detect wireless interface when WiFi SSID is set (no NetworkManager required)
+      shell: |
+        for i in /sys/class/net/*/wireless; do
+          [ -d "$i" ] && echo "${i%/wireless}" | sed 's|.*/net/||' && break
+        done
+      register: wifi_interface_out
+      changed_when: false
+      when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+
+    - name: Set machine_wifi_interface from detected WiFi device
+      set_fact:
+        machine_wifi_interface: "{{ wifi_interface_out.stdout }}"
+      when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and wifi_interface_out.stdout is defined and wifi_interface_out.stdout | length > 0
+
+    - name: Warn when WiFi SSID set but no wireless interface found
+      debug:
+        msg: "machine_wifi_ssid is set but no wireless interface was detected; WiFi will not be configured. Install a WiFi adapter or unset machine_wifi_ssid."
+      when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
+
+    - name: Set apply_machine_network (we will write netplan: ethernets and/or WiFi)
+      set_fact:
+        apply_machine_network: "{{ (machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0) or (machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is defined and machine_wifi_interface | length > 0)) }}"
+
     - name: Stat 50-cloud-init.yaml
       stat:
         path: /etc/netplan/50-cloud-init.yaml
       register: cloud_init_netplan_stat
-      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+      when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool
 
     - name: Backup 50-cloud-init.yaml if present
       copy:
         src: /etc/netplan/50-cloud-init.yaml
         dest: /etc/netplan/50-cloud-init.yaml.bak
         remote_src: yes
-      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0 and (cloud_init_netplan_stat is defined and cloud_init_netplan_stat.stat.exists | default(false))
+      when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool and (cloud_init_netplan_stat is defined and cloud_init_netplan_stat.stat.exists | default(false))
 
     - name: Remove 50-cloud-init.yaml
       file:
         path: /etc/netplan/50-cloud-init.yaml
         state: absent
-      when: machine_network_remove_cloud_init and machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+      when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool
 
     - name: Write netplan 99-machine-network.yaml
       template:
         src: 99-machine-network.yaml.j2
         dest: /etc/netplan/99-machine-network.yaml
         mode: "0600"
-      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+      when: apply_machine_network | default(false) | bool
 
-    - name: Apply netplan
+    - name: Apply netplan (safe even if SSID absent)
       command: netplan generate && netplan apply
-      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+
+    # WiFi: two NM profiles (2.4 + 5 GHz), autoconnect priority 2.4 > 5; do not bring up at create.
+    - name: Create NM WiFi profile OFFICEGST-2.4GHz (add only; harmless if exists)
+      command: >
+        nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-2.4GHz" ssid "{{ machine_wifi_ssid }}"
+        wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      register: nm_add_24
+      failed_when: false
+      changed_when: nm_add_24.rc == 0
+
+    - name: Create NM WiFi profile OFFICEGST-5GHz (add only; harmless if exists)
+      command: >
+        nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-5GHz" ssid "{{ machine_wifi_ssid }}"
+        wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      register: nm_add_5
+      failed_when: false
+      changed_when: nm_add_5.rc == 0
+
+    - name: Align NM profile {{ machine_wifi_ssid }}-2.4GHz (idempotent; run every time)
+      command: >
+        nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz"
+        wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+
+    - name: Align NM profile {{ machine_wifi_ssid }}-5GHz (idempotent; run every time)
+      command: >
+        nmcli connection modify "{{ machine_wifi_ssid }}-5GHz"
+        wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+
+    - name: Connect to WiFi only if SSID is visible (non-fatal)
+      shell: |
+        nmcli -t -f SSID dev wifi list | grep -Fx "{{ machine_wifi_ssid }}" >/dev/null && nmcli dev wifi connect "{{ machine_wifi_ssid }}" || true
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
 
     - name: Log networking section
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "8. NETWORKING (netplan) - $(date)" >> {{ log_file }}
+        echo "8. NETWORKING (NetworkManager + netplan) - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Internet (DHCP): {{ internet_interface | default('none') }}" >> {{ log_file }}
         echo "Camera (static): {{ (camera_static_config | default([])) | map(attribute='name') | join(', ') | default('none') }}" >> {{ log_file }}
         {% for c in (camera_static_config | default([])) %}
         echo "  {{ c.name }}: {{ c.address }}" >> {{ log_file }}
         {% endfor %}
+        {% if machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and machine_wifi_interface is defined and machine_wifi_interface | length > 0 %}
+        echo "WiFi: {{ machine_wifi_interface }} -> {{ machine_wifi_ssid }} (2.4GHz priority 100, 5GHz priority 10)" >> {{ log_file }}
+        {% endif %}
+        echo "Netplan: 01-network-manager.yaml (renderer NM) + 99-machine-network.yaml" >> {{ log_file }}
         echo "" >> {{ log_file }}
-      when: machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0
+      when: apply_machine_network | default(false) | bool
 
-    - name: Log networking skipped (no default route with multiple interfaces, or no interfaces)
+    - name: Log networking skipped (no default route with multiple interfaces, no interfaces, or WiFi requested but no wireless interface)
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "8. NETWORKING - skipped (no default route with multiple interfaces, or no interfaces)" >> {{ log_file }}
+        echo "8. NETWORKING - skipped" >> {{ log_file }}
         echo "" >> {{ log_file }}
-      when: machine_netplan_ethernets is not defined or machine_netplan_ethernets | length == 0
+      when: not (apply_machine_network | default(false) | bool)
 
     # ==========================================================
     # 9. TIMEZONE
@@ -341,7 +438,7 @@
         echo "===========================================================" >> {{ log_file }}
         echo "✅ All verifications passed!" >> {{ log_file }}
         echo "" >> {{ log_file }}
-        echo "Machine setup complete: networking (netplan), timezone ({{ machine_timezone }})." >> {{ log_file }}
+        echo "Machine setup complete: networking (NetworkManager + netplan), timezone ({{ machine_timezone }})." >> {{ log_file }}
         echo "Your system is ready for ML workloads and for king_detector setup (see king_detector repo)." >> {{ log_file }}
         echo "" >> {{ log_file }}
         echo "To use the ML environment:" >> {{ log_file }}
@@ -354,7 +451,7 @@
         msg: |
           ✅ ✅ ✅ ALL VERIFICATIONS PASSED! ✅ ✅ ✅
 
-          Machine setup complete: networking (netplan), timezone ({{ machine_timezone }}).
+          Machine setup complete: networking (NetworkManager + netplan), timezone ({{ machine_timezone }}).
 
           Your system is fully configured and ready for ML workloads:
           • NVIDIA Driver: Loaded
@@ -363,7 +460,7 @@
           • ML Packages: Installed (PyTorch, ultralytics, TensorRT, onnxruntime-gpu)
           • PyTorch CUDA Support: Enabled
           • TensorRT: Verified
-          • Networking: 99-machine-network (DHCP + camera static)
+          • Networking: NetworkManager + 99-machine-network (DHCP + camera static; WiFi if configured)
           • Timezone: {{ machine_timezone }}
 
           To use the ML environment:
