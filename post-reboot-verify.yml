@@ -236,21 +236,53 @@
       changed_when: false
       failed_when: false
 
-    - name: List UP ethernet interfaces (exclude lo)
+    - name: List ethernet interfaces (exclude lo and wireless)
       shell: |
-        ip -br link show | awk '$2=="UP" && $1!="lo" {print $1}'
-      register: up_interfaces_raw
+        for p in /sys/class/net/*; do
+          iface="$(basename "$p")"
+          [ "$iface" = "lo" ] && continue
+          [ -d "$p/wireless" ] && continue
+          [ -f "$p/type" ] && [ "$(cat "$p/type")" != "1" ] && continue
+          echo "$iface"
+        done
+      register: ethernet_ifaces_raw
       changed_when: false
 
-    - name: Set internet interface (default route or single interface fallback)
-      set_fact:
-        internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '') }}"
+    - name: Bring up ethernet interfaces before link detection (non-fatal)
+      shell: |
+        for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
+          [ -n "$iface" ] && ip link set "$iface" up >/dev/null 2>&1 || true
+        done
+      changed_when: false
+      failed_when: false
+      when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
 
-    - name: Build list of camera interfaces (UP, no internet; exclude internet interface to avoid duplicate)
+    - name: List connected ethernet interfaces (carrier up or operstate up)
+      shell: |
+        for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
+          [ -z "$iface" ] && continue
+          carrier=""
+          state=""
+          [ -f "/sys/class/net/$iface/carrier" ] && carrier="$(cat /sys/class/net/$iface/carrier 2>/dev/null || true)"
+          [ -f "/sys/class/net/$iface/operstate" ] && state="$(cat /sys/class/net/$iface/operstate 2>/dev/null || true)"
+          if [ "$carrier" = "1" ] || [ "$state" = "up" ]; then
+            echo "$iface"
+          fi
+        done
+      register: connected_ethernet_raw
+      changed_when: false
+      failed_when: false
+      when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
+
+    - name: Set internet interface (default route or single ethernet fallback)
+      set_fact:
+        internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else ((ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first) if (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '')) }}"
+
+    - name: Build list of camera interfaces (connected ethernet, no internet; exclude internet interface to avoid duplicate)
       shell: |
         default_if="{{ default_route_iface.stdout }}"
         internet_if="{{ internet_interface | default('') }}"
-        for iface in {{ up_interfaces_raw.stdout_lines | default([]) | join(' ') }}; do
+        for iface in {{ connected_ethernet_raw.stdout_lines | default([]) | join(' ') }}; do
           [ -z "$iface" ] && continue
           [ "$iface" = "$default_if" ] && continue
           [ -n "$internet_if" ] && [ "$iface" = "$internet_if" ] && continue
@@ -274,15 +306,15 @@
       loop_control:
         label: "{{ item }}"
 
-    - name: Warn when multiple interfaces but no default route (skipping netplan)
+    - name: Warn when multiple connected ethernet interfaces but no default route (skipping netplan)
       debug:
-        msg: "No default route and multiple UP interfaces; skipping netplan. Fix network or set default route and re-run."
-      when: (default_route_iface.stdout | length == 0) and (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length > 1)
+        msg: "No default route and multiple connected ethernet interfaces; skipping netplan. Fix network or set default route and re-run."
+      when: (default_route_iface.stdout | length == 0) and (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length > 1)
 
     - name: Set machine_netplan_ethernets (internet DHCP + camera static)
       set_fact:
         machine_netplan_ethernets: "{{ ([{'name': internet_interface, 'dhcp4': True}] if internet_interface else []) + (camera_static_config | default([]) | map('combine', {'dhcp4': False}) | list) }}"
-      when: (default_route_iface.stdout | length > 0) or (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
+      when: (default_route_iface.stdout | length > 0) or (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) or (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
 
     - name: Detect wireless interface when WiFi SSID is set (tolerates no WLAN)
       shell: |
