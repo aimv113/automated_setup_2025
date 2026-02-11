@@ -284,13 +284,15 @@
         machine_netplan_ethernets: "{{ ([{'name': internet_interface, 'dhcp4': True}] if internet_interface else []) + (camera_static_config | default([]) | map('combine', {'dhcp4': False}) | list) }}"
       when: (default_route_iface.stdout | length > 0) or (up_interfaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
 
-    - name: Detect wireless interface when WiFi SSID is set (no NetworkManager required)
+    - name: Detect wireless interface when WiFi SSID is set (tolerates no WLAN)
       shell: |
         for i in /sys/class/net/*/wireless; do
           [ -d "$i" ] && echo "${i%/wireless}" | sed 's|.*/net/||' && break
         done
+        true
       register: wifi_interface_out
       changed_when: false
+      failed_when: false
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
 
     - name: Set machine_wifi_interface from detected WiFi device
@@ -298,9 +300,18 @@
         machine_wifi_interface: "{{ wifi_interface_out.stdout }}"
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and wifi_interface_out.stdout is defined and wifi_interface_out.stdout | length > 0
 
-    - name: Warn when WiFi SSID set but no wireless interface found
+    - name: Pause when no WiFi adapter (setup incomplete) — continue or abort
+      pause:
+        prompt: |
+          No WiFi adapter detected. This machine cannot connect to "{{ machine_wifi_ssid }}".
+          Setup will be incomplete (WiFi will not be configured).
+          Press Enter to continue anyway, or Ctrl+C to abort.
+        echo: true
+      when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
+
+    - name: Log warning when WiFi skipped (no adapter)
       debug:
-        msg: "machine_wifi_ssid is set but no wireless interface was detected; WiFi will not be configured. Install a WiFi adapter or unset machine_wifi_ssid."
+        msg: "WiFi skipped: no wireless interface; machine cannot connect to {{ machine_wifi_ssid }}. Setup incomplete."
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
 
     - name: Set apply_machine_network (we will write netplan: ethernets and/or WiFi)
