@@ -87,7 +87,9 @@ sudo zerotier-cli join 8286ac0e475bfb64
 
 
 ### **!! update local machine hosts file with remote name, standard port for now !!**
-sudo nano .ssh/config
+```bash
+sudo nano  ~/.ssh/config 
+```
 
 SSH into machine
 
