@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two Ansible playbooks for automated Ubuntu 24.04 setup with NVIDIA GPU support, ML environment, and monitoring. Designed for bare metal and VM installations with automatic environment detection. Machine setup is **complete** after `post-reboot-verify.yml` (which includes networking and timezone). King_detector program setup (venv, crane-display service, etc.) lives in the king_detector repo and is run from there.
 
 **Playbooks:**
-1. `ubuntu-setup.yml` - Main installation (run first)
-2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot). Also configures **networking** via **NetworkManager** + netplan (99-machine-network: DHCP + camera static; optional WiFi SSID; 50-cloud-init removed) and **timezone** (default America/Chicago). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9 for king_detector setup (script in king_detector repo).
+1. `ubuntu-setup.yml` - Main installation (run first). Includes optional **RTL8812AU** USB WiFi driver (0bda:8812): when adapter is present, installs dkms + morrownr/8812au-20210820 so WiFi works after reboot.
+2. `post-reboot-verify.yml` - Post-reboot verification (run after reboot). Also configures **networking** via **NetworkManager** + netplan (99-machine-network: DHCP + camera static; optional WiFi SSID; 50-cloud-init removed) and **timezone** (default America/Chicago). WiFi: two profiles per SSID (2.4GHz preferred, 5GHz fallback), open network (`wifi-sec.key-mgmt none`), and a **reminder to test connectivity over WiFi only before shipping**. See [Setup-post-reboot.md](Setup-post-reboot.md) section 9 for king_detector setup (script in king_detector repo).
 
 ## Running the Playbooks
 
@@ -36,7 +36,7 @@ Test idempotency by running setup twice (second run should show no changes).
 ### Playbook Structure (19 Sections)
 
 Interactive healthcheck prompt + sections 1-16 + reboot check + final message in `ubuntu-setup.yml` (1130 lines):
-0. Healthcheck Prompt → 1. Log Init → 2. System Update → 3. Tools → 4. SSH (port 33412) → 5. UFW → 6. Auto-Reboot → 7. Tailscale → 8. RealVNC → 9. VS Code → 10. Display/VM Detection → 11. NVIDIA Driver → 12. CUDA → 13. TensorRT → 14. Docker+NVIDIA → 15. Python → 16. Healthchecks (5min, optional) → 17. ML Environment → 18. Reboot Check → 19. Final Message
+0. Healthcheck Prompt → 1. Log Init → 2. System Update → 2b. RTL8812AU USB WiFi driver (if 0bda:8812 present) → 3. Tools → 4. SSH (port 33412) → … → 19. Final Message
 
 ### Critical Design Patterns
 
@@ -82,6 +82,9 @@ The playbook implements a fully reproducible GPU stack with three layers of prot
 - Defensive protection even if holds are manually cleared
 
 **Result**: 100% GPU stack reproducibility. See [REPRODUCIBILITY_STRATEGY.md](REPRODUCIBILITY_STRATEGY.md) for complete documentation.
+
+**6. RTL8812AU USB WiFi driver (optional)**  
+When `lsusb` shows `0bda:8812` (Realtek RTL8812AU), the playbook installs dkms, bc, linux-headers-generic, clones [morrownr/8812au-20210820](https://github.com/morrownr/8812au-20210820) to `{{ installers_base_path }}/8812au-20210820`, and runs `install-driver.sh NoPrompt`. Non-fatal (block/rescue). After reboot the USB WiFi interface is available for NetworkManager; post-reboot-verify then configures WiFi (2.4GHz preferred, 5GHz fallback, open network) and reminds the user to **test connectivity over WiFi only before shipping** (ethernet is only for setup).
 
 ### Configuration Variables (Lines 13-41)
 

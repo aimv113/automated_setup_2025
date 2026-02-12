@@ -379,8 +379,16 @@
     - name: Apply netplan (safe even if SSID absent)
       command: netplan generate && netplan apply
 
-    # WiFi: two NM profiles (2.4 + 5 GHz), autoconnect priority 2.4 > 5; do not bring up at create.
-    - name: Create NM WiFi profile OFFICEGST-2.4GHz (add only; harmless if exists)
+    - name: Set WiFi device to managed by NetworkManager
+      command: nmcli device set "{{ machine_wifi_interface }}" managed yes
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
+    # WiFi: two NM profiles (2.4 + 5 GHz), autoconnect priority 2.4 > 5; open network (no auth).
+    - name: Create NM WiFi profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred)
       command: >
         nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-2.4GHz" ssid "{{ machine_wifi_ssid }}"
         wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
@@ -391,7 +399,7 @@
       failed_when: false
       changed_when: nm_add_24.rc == 0
 
-    - name: Create NM WiFi profile OFFICEGST-5GHz (add only; harmless if exists)
+    - name: Create NM WiFi profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback)
       command: >
         nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-5GHz" ssid "{{ machine_wifi_ssid }}"
         wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
@@ -402,19 +410,21 @@
       failed_when: false
       changed_when: nm_add_5.rc == 0
 
-    - name: Align NM profile {{ machine_wifi_ssid }}-2.4GHz (idempotent; run every time)
+    - name: Align NM profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred; open network)
       command: >
         nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz"
         wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
+        wifi-sec.key-mgmt none
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
       failed_when: false
 
-    - name: Align NM profile {{ machine_wifi_ssid }}-5GHz (idempotent; run every time)
+    - name: Align NM profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback; open network)
       command: >
         nmcli connection modify "{{ machine_wifi_ssid }}-5GHz"
         wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
+        wifi-sec.key-mgmt none
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
@@ -483,6 +493,10 @@
         echo "" >> {{ log_file }}
         echo "Machine setup complete: networking (NetworkManager + netplan), timezone ({{ machine_timezone }})." >> {{ log_file }}
         echo "Your system is ready for ML workloads and for king_detector setup (see king_detector repo)." >> {{ log_file }}
+        {% if machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and machine_wifi_interface is defined and machine_wifi_interface | length > 0 %}
+        echo "" >> {{ log_file }}
+        echo "WIFI-ONLY REMINDER: Before shipping, unplug ethernet and verify connectivity over WiFi ({{ machine_wifi_ssid }}) only." >> {{ log_file }}
+        {% endif %}
         echo "" >> {{ log_file }}
         echo "To use the ML environment:" >> {{ log_file }}
         echo "  source ~/code/auto_test/activate.sh" >> {{ log_file }}
@@ -510,5 +524,10 @@
             source ~/code/auto_test/activate.sh
 
           Next: run the king_detector setup script (see king_detector repo admin/SETUP.md).
+
+          {% if machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and machine_wifi_interface is defined and machine_wifi_interface | length > 0 %}
+          ⚠️  WIFI-ONLY REMINDER: In operation this machine uses only WiFi ({{ machine_wifi_ssid }}) for internet.
+          Before shipping, unplug ethernet and verify connectivity over WiFi only.
+          {% endif %}
 
           Log file: {{ log_file }}
