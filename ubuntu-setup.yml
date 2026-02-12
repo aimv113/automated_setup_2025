@@ -44,8 +44,6 @@
 
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
     rtl8812au_usb_id: "0bda:8812"
-    # Pin to a fixed upstream revision for reproducible installs.
-    rtl8812au_repo_version: "232107d9b"
 
   tasks:
 
@@ -432,28 +430,19 @@
         echo "" >> {{ log_file }}
 
     - block:
-        - name: Install build deps for RTL8812AU (dkms, bc, kernel headers)
+        - name: Install build deps for RTL8812AU (dkms, build-essential, git, kernel headers)
           apt:
             name:
               - dkms
-              - bc
-              - linux-headers-generic
               - build-essential
               - git
+              - linux-headers-generic
             state: present
 
-        - name: Create directory for 8812au driver source
-          file:
-            path: "{{ installers_base_path }}/8812au-20210820"
-            state: directory
-            mode: '0755'
-
-        - name: Clone pinned 8812au driver revision (morrownr/8812au-20210820)
+        - name: Clone 8812au driver (morrownr/8812au-20210820)
           git:
             repo: https://github.com/morrownr/8812au-20210820.git
             dest: "{{ installers_base_path }}/8812au-20210820"
-            version: "{{ rtl8812au_repo_version }}"
-            force: no
 
         - name: Install RTL8812AU driver (non-interactive; run from repo dir)
           command: ./install-driver.sh NoPrompt
@@ -467,7 +456,7 @@
 
         - name: Log RTL8812AU driver install success
           shell: |
-            echo "✅ RTL8812AU driver installed from pinned revision {{ rtl8812au_repo_version }}" >> {{ log_file }}
+            echo "✅ RTL8812AU driver installed from morrownr/8812au-20210820" >> {{ log_file }}
             echo "" >> {{ log_file }}
 
       rescue:
@@ -477,7 +466,7 @@
 
         - name: Log RTL8812AU driver install failure
           shell: |
-            echo "⚠️  RTL8812AU driver install failed (pinned revision {{ rtl8812au_repo_version }})" >> {{ log_file }}
+            echo "⚠️  RTL8812AU driver install failed" >> {{ log_file }}
             echo "" >> {{ log_file }}
           failed_when: false
 
