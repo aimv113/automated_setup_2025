@@ -88,9 +88,11 @@ sudo zerotier-cli join 8286ac0e475bfb64
 
 ### **!! update local machine hosts file with remote name, standard port for now !!**
 ```bash
-sudo nano  ~/.ssh/config 
+sudo nano  ~/.ssh/config
 ```
-
+```bash
+ssh-keygen -R 192.168.0.132
+```
 SSH into machine
 
 ## 3. Install Ansible and clone repository
