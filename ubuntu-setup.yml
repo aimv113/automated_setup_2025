@@ -44,6 +44,17 @@
 
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
     rtl8812au_usb_id: "0bda:8812"
+    hwe_kernel_meta_package: "linux-generic-hwe-24.04"
+    hwe_kernel_headers_meta_package: "linux-headers-generic-hwe-24.04"
+    hwe_kernel_pin_enabled: true
+    hwe_kernel_pin_version: "6.17.0-14"
+    hwe_kernel_flavor: "generic"
+    hwe_kernel_require_reboot_before_continue: true
+    hwe_kernel_pinned_packages:
+      - "linux-image-{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
+      - "linux-headers-{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
+      - "linux-modules-{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
+      - "linux-modules-extra-{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
 
   tasks:
 
@@ -214,7 +225,288 @@
         msg: "✅ Pre-flight checks passed: {{ opt_free_space.stdout }}GB available, network: {{ 'online' if nvidia_network_check.status is defined else 'offline' }}"
 
     # ==========================================================
-    # 2. CREATE LOCAL INSTALLER STORAGE
+    # 2. HWE KERNEL BASELINE
+    # ==========================================================
+    - name: Install Ubuntu 24.04 HWE kernel meta packages
+      apt:
+        update_cache: yes
+        name:
+          - "{{ hwe_kernel_meta_package }}"
+          - "{{ hwe_kernel_headers_meta_package }}"
+        state: present
+      register: hwe_kernel_meta_install
+
+    - name: Install pinned HWE kernel package set
+      apt:
+        name: "{{ hwe_kernel_pinned_packages }}"
+        state: present
+      register: hwe_kernel_pin_install
+      when: hwe_kernel_pin_enabled | bool
+
+    - name: Hold pinned HWE kernel packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ hwe_kernel_pinned_packages }}"
+      when: hwe_kernel_pin_enabled | bool
+
+    - name: Set kernel baseline facts
+      set_fact:
+        hwe_target_kernel_release: "{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
+        hwe_kernel_active_matches_target: "{{ ansible_kernel == (hwe_kernel_pin_version ~ '-' ~ hwe_kernel_flavor) }}"
+        hwe_kernel_native_8812au_supported: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
+
+    - name: Log kernel baseline status
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "2. HWE KERNEL BASELINE - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Running kernel: {{ ansible_kernel }}" >> {{ log_file }}
+        echo "HWE meta packages installed: {{ hwe_kernel_meta_install.changed }}" >> {{ log_file }}
+        {% if hwe_kernel_pin_enabled %}
+        echo "Pinned kernel target: {{ hwe_target_kernel_release }}" >> {{ log_file }}
+        echo "Pinned kernel packages updated: {{ hwe_kernel_pin_install.changed | default(false) }}" >> {{ log_file }}
+        echo "Pinned kernel active now: {{ hwe_kernel_active_matches_target }}" >> {{ log_file }}
+        {% endif %}
+        echo "RTL8812AU native support available on running kernel: {{ hwe_kernel_native_8812au_supported }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - name: Display kernel baseline reminder when reboot is needed
+      debug:
+        msg: |
+          Kernel baseline packages are installed, but the running kernel is still {{ ansible_kernel }}.
+          Reboot before relying on native RTL8812AU support (target: {{ hwe_target_kernel_release }}).
+      when:
+        - hwe_kernel_pin_enabled | bool
+        - not (hwe_kernel_active_matches_target | bool)
+
+    # ==========================================================
+    # 3. KERNEL REBOOT GATE (early exit)
+    # ==========================================================
+    - name: Stop run until pinned kernel is active
+      fail:
+        msg: |
+          Kernel baseline is installed but not active yet.
+          Running kernel: {{ ansible_kernel }}
+          Required kernel: {{ hwe_target_kernel_release }}
+          Reboot now (sudo reboot), then re-run this playbook.
+      when:
+        - hwe_kernel_pin_enabled | bool
+        - hwe_kernel_require_reboot_before_continue | bool
+        - not (hwe_kernel_active_matches_target | bool)
+
+    # ==========================================================
+    # 4. WIFI READINESS (early gate before the rest of setup)
+    # ==========================================================
+    - name: Install WiFi detection tools
+      apt:
+        name:
+          - usbutils
+          - pciutils
+        state: present
+
+    - name: Detect expected RTL8812AU adapter
+      shell: lsusb | grep -qi "{{ rtl8812au_usb_id }}"
+      register: wifi_expected_usb
+      changed_when: false
+      failed_when: false
+
+    - name: Detect other likely USB WiFi adapters
+      shell: |
+        lsusb | grep -Eiv "{{ rtl8812au_usb_id }}" | grep -Ei 'Wireless|WiFi|WLAN|802\.11|Atheros|Ralink|MediaTek|Qualcomm|Broadcom|Realtek.*(881|882|8723|88)'
+      register: wifi_other_usb
+      changed_when: false
+      failed_when: false
+
+    - name: Detect PCIe wireless adapters
+      shell: lspci -nn | grep -Ei 'Network controller|Wireless|802\.11'
+      register: wifi_pci
+      changed_when: false
+      failed_when: false
+
+    - name: Detect currently working wireless interfaces
+      shell: |
+        for iface in /sys/class/net/*; do
+          iface_name="$(basename "$iface")"
+          if [ -d "/sys/class/net/${iface_name}/wireless" ]; then
+            echo "${iface_name}"
+          fi
+        done
+      register: wifi_wireless_ifaces
+      changed_when: false
+      failed_when: false
+
+    - name: Set WiFi classification facts
+      set_fact:
+        rtl8812au_present: "{{ wifi_expected_usb.rc == 0 }}"
+        wifi_other_adapter_detected: "{{ (wifi_other_usb.stdout | default('') | trim | length > 0) or (wifi_pci.stdout | default('') | trim | length > 0) }}"
+        wifi_native_working: "{{ (wifi_wireless_ifaces.stdout_lines | default([]) | length) > 0 }}"
+        rtl8812au_install_status: "not_attempted"
+
+    - name: Compute WiFi decision summary
+      set_fact:
+        wifi_kernel_supports_native_8812au: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
+        wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
+        wifi_proposed_action: >-
+          {% if (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (wifi_native_working | bool) %}
+          Use native in-kernel RTL8812AU support (rtw88_8812au); no external DKMS driver install.
+          {% elif (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (not wifi_native_working | bool) %}
+          RTL8812AU is present and kernel supports it, but no wireless interface is active; fail in production.
+          {% elif (rtl8812au_present | bool) and (not wifi_kernel_supports_native_8812au | bool) %}
+          Running kernel is too old for native RTL8812AU support; reboot into pinned HWE kernel ({{ hwe_target_kernel_release }}) or fail in production.
+          {% elif (wifi_other_adapter_detected | bool) and (wifi_native_working | bool) %}
+          Keep native driver (different adapter appears functional); no custom driver install.
+          {% elif (wifi_other_adapter_detected | bool) and (not wifi_native_working | bool) %}
+          Different adapter detected but no native WiFi interface found; treat as unsupported and fail in production.
+          {% else %}
+          No WiFi adapter detected; fail in production and continue in test/check mode.
+          {% endif %}
+
+    - name: Confirm WiFi approach with operator
+      pause:
+        prompt: |
+
+          ============================================================
+          WIFI READINESS DECISION
+          ============================================================
+          Deployment mode: {{ deployment_mode }}
+          Running kernel: {{ ansible_kernel }}
+          Native RTL8812AU support on running kernel: {{ wifi_kernel_supports_native_8812au }}
+          Expected adapter ({{ rtl8812au_usb_id }}): {{ 'present' if rtl8812au_present else 'absent' }}
+          Other adapter detected: {{ wifi_other_adapter_detected }}
+          Working wireless interfaces: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}
+
+          Proposed action:
+          {{ wifi_proposed_action }}
+
+          Choose:
+            1) Proceed with proposed action
+            2) Skip WiFi changes/check enforcement for this run
+            3) Abort run now
+          Enter 1, 2, or 3
+      register: wifi_plan_prompt
+
+    - name: Set WiFi operator decision
+      set_fact:
+        wifi_operator_decision: "{{ (wifi_plan_prompt.user_input | default('1') | trim) if (wifi_plan_prompt.user_input | default('1') | trim) in ['1', '2', '3'] else '1' }}"
+
+    - name: Abort on operator request
+      fail:
+        msg: "Operator aborted during WiFi readiness decision."
+      when: wifi_operator_decision == '3'
+
+    - name: Log WiFi readiness decision
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "4. WIFI READINESS - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Deployment mode: {{ deployment_mode }}" >> {{ log_file }}
+        echo "Running kernel: {{ ansible_kernel }}" >> {{ log_file }}
+        echo "Native RTL8812AU support on running kernel: {{ wifi_kernel_supports_native_8812au }}" >> {{ log_file }}
+        echo "Expected adapter ({{ rtl8812au_usb_id }}): {{ rtl8812au_present }}" >> {{ log_file }}
+        echo "Other adapter detected: {{ wifi_other_adapter_detected }}" >> {{ log_file }}
+        echo "Wireless interfaces: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}" >> {{ log_file }}
+        echo "Proposed action: {{ wifi_proposed_action | regex_replace('\\n', ' ') }}" >> {{ log_file }}
+        echo "Operator decision: {{ wifi_operator_decision }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    - name: Enforce production policy for missing WiFi adapter
+      fail:
+        msg: "No WiFi adapter detected. Production mode requires a WiFi adapter."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'production'
+        - wifi_path == 'no_adapter'
+
+    - name: Enforce production policy for unsupported non-native adapter
+      fail:
+        msg: "A non-RTL8812AU adapter was detected but no native wireless interface is available. Production mode requires a working WiFi adapter."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'production'
+        - wifi_path == 'other_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Enforce production policy when RTL8812AU adapter is not working natively
+      fail:
+        msg: "RTL8812AU adapter was detected but no native wireless interface is active on kernel {{ ansible_kernel }}. Reboot into {{ hwe_target_kernel_release }} or fix adapter state."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'production'
+        - wifi_path == 'expected_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Warn when RTL8812AU adapter is present but not active (test mode)
+      debug:
+        msg: "RTL8812AU adapter is present but no wireless interface is active on kernel {{ ansible_kernel }}. Continuing because deployment mode is test/check."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'test'
+        - wifi_path == 'expected_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Warn about non-native adapter without working wireless interface (test mode)
+      debug:
+        msg: "Non-RTL8812AU adapter detected, but no wireless interface is up natively. Continuing because deployment mode is test/check."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'test'
+        - wifi_path == 'other_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Mark WiFi status when RTL8812AU adapter is working natively
+      set_fact:
+        rtl8812au_install_status: "native_expected_adapter_ok"
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_path == 'expected_adapter'
+        - wifi_native_working | bool
+
+    - name: Mark WiFi status when RTL8812AU adapter is present but not active (test mode)
+      set_fact:
+        rtl8812au_install_status: "expected_adapter_not_working_test"
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'test'
+        - wifi_path == 'expected_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Mark WiFi status when using native non-RTL adapter
+      set_fact:
+        rtl8812au_install_status: "native_adapter_ok"
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_path == 'other_adapter'
+        - wifi_native_working | bool
+
+    - name: Mark WiFi status when no adapter is acceptable in test mode
+      set_fact:
+        rtl8812au_install_status: "no_adapter_allowed_test"
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'test'
+        - wifi_path == 'no_adapter'
+
+    - name: Mark WiFi status when non-native adapter is not working (test mode)
+      set_fact:
+        rtl8812au_install_status: "other_adapter_not_working_test"
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'test'
+        - wifi_path == 'other_adapter'
+        - not (wifi_native_working | bool)
+
+    - name: Mark WiFi status when operator skipped WiFi handling
+      set_fact:
+        rtl8812au_install_status: "skipped_by_operator"
+      when: wifi_operator_decision == '2'
+
+    - name: Report WiFi readiness outcome
+      debug:
+        msg: "WiFi readiness outcome: {{ rtl8812au_install_status }}"
+
+    # ==========================================================
+    # 5. CREATE LOCAL INSTALLER STORAGE
     # ==========================================================
     - name: Create local installer base directory
       file:
@@ -245,7 +537,7 @@
     - name: Log local installer storage creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "2. LOCAL INSTALLER STORAGE - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
+        echo "5. LOCAL INSTALLER STORAGE - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Created {{ installers_base_path }} for reproducible builds" >> {{ log_file }}
         echo "" >> {{ log_file }}
@@ -304,7 +596,7 @@
         force: no
 
     # ==========================================================
-    # 3. SYSTEM UPDATE
+    # 6. SYSTEM UPDATE
     # ==========================================================
     - name: Update apt cache and upgrade packages
       apt:
@@ -316,7 +608,7 @@
     - name: Log system update
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "1. SYSTEM UPDATE - $(date)" >> {{ log_file }}
+        echo "6. SYSTEM UPDATE - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "✅ System updated successfully." >> {{ log_file }}
         echo "" >> {{ log_file }}
@@ -324,230 +616,7 @@
     - debug: msg="✅ System updated successfully."
 
     # ==========================================================
-    # 4. WIFI READINESS (first main action after system update)
-    # ==========================================================
-    - name: Install WiFi detection tools
-      apt:
-        name:
-          - usbutils
-          - pciutils
-        state: present
-
-    - name: Detect expected RTL8812AU adapter
-      shell: lsusb | grep -qi "{{ rtl8812au_usb_id }}"
-      register: wifi_expected_usb
-      changed_when: false
-      failed_when: false
-
-    - name: Detect other likely USB WiFi adapters
-      shell: |
-        lsusb | grep -Eiv "{{ rtl8812au_usb_id }}" | grep -Ei 'Wireless|WiFi|WLAN|802\.11|Atheros|Ralink|MediaTek|Qualcomm|Broadcom|Realtek.*(881|882|8723|88)'
-      register: wifi_other_usb
-      changed_when: false
-      failed_when: false
-
-    - name: Detect PCIe wireless adapters
-      shell: lspci -nn | grep -Ei 'Network controller|Wireless|802\.11'
-      register: wifi_pci
-      changed_when: false
-      failed_when: false
-
-    - name: Detect currently working wireless interfaces
-      shell: |
-        for iface in /sys/class/net/*; do
-          iface_name="$(basename "$iface")"
-          if [ -d "/sys/class/net/${iface_name}/wireless" ]; then
-            echo "${iface_name}"
-          fi
-        done
-      register: wifi_wireless_ifaces
-      changed_when: false
-      failed_when: false
-
-    - name: Set WiFi classification facts
-      set_fact:
-        rtl8812au_present: "{{ wifi_expected_usb.rc == 0 }}"
-        wifi_other_adapter_detected: "{{ (wifi_other_usb.stdout | default('') | trim | length > 0) or (wifi_pci.stdout | default('') | trim | length > 0) }}"
-        wifi_native_working: "{{ (wifi_wireless_ifaces.stdout_lines | default([]) | length) > 0 }}"
-        rtl8812au_install_status: "not_attempted"
-
-    - name: Compute WiFi decision summary
-      set_fact:
-        wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
-        wifi_proposed_action: >-
-          {% if rtl8812au_present | bool %}
-          Install pinned RTL8812AU DKMS driver from morrownr/8812au-20210820.
-          {% elif (wifi_other_adapter_detected | bool) and (wifi_native_working | bool) %}
-          Keep native driver (different adapter appears functional); no custom driver install.
-          {% elif (wifi_other_adapter_detected | bool) and (not wifi_native_working | bool) %}
-          Different adapter detected but no native WiFi interface found; treat as unsupported and fail in production.
-          {% else %}
-          No WiFi adapter detected; fail in production and continue in test/check mode.
-          {% endif %}
-
-    - name: Confirm WiFi approach with operator
-      pause:
-        prompt: |
-
-          ============================================================
-          WIFI READINESS DECISION
-          ============================================================
-          Deployment mode: {{ deployment_mode }}
-          Expected adapter ({{ rtl8812au_usb_id }}): {{ 'present' if rtl8812au_present else 'absent' }}
-          Other adapter detected: {{ wifi_other_adapter_detected }}
-          Working wireless interfaces: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}
-
-          Proposed action:
-          {{ wifi_proposed_action }}
-
-          Choose:
-            1) Proceed with proposed action
-            2) Skip WiFi changes/check enforcement for this run
-            3) Abort run now
-          Enter 1, 2, or 3
-      register: wifi_plan_prompt
-
-    - name: Set WiFi operator decision
-      set_fact:
-        wifi_operator_decision: "{{ (wifi_plan_prompt.user_input | default('1') | trim) if (wifi_plan_prompt.user_input | default('1') | trim) in ['1', '2', '3'] else '1' }}"
-
-    - name: Abort on operator request
-      fail:
-        msg: "Operator aborted during WiFi readiness decision."
-      when: wifi_operator_decision == '3'
-
-    - name: Log WiFi readiness decision
-      shell: |
-        echo "===========================================================" >> {{ log_file }}
-        echo "4. WIFI READINESS - $(date)" >> {{ log_file }}
-        echo "===========================================================" >> {{ log_file }}
-        echo "Deployment mode: {{ deployment_mode }}" >> {{ log_file }}
-        echo "Expected adapter ({{ rtl8812au_usb_id }}): {{ rtl8812au_present }}" >> {{ log_file }}
-        echo "Other adapter detected: {{ wifi_other_adapter_detected }}" >> {{ log_file }}
-        echo "Wireless interfaces: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}" >> {{ log_file }}
-        echo "Proposed action: {{ wifi_proposed_action | regex_replace('\\n', ' ') }}" >> {{ log_file }}
-        echo "Operator decision: {{ wifi_operator_decision }}" >> {{ log_file }}
-        echo "" >> {{ log_file }}
-
-    - block:
-        - name: Install build deps for RTL8812AU (dkms, build-essential, git, kernel headers)
-          apt:
-            name:
-              - dkms
-              - build-essential
-              - git
-              - linux-headers-generic
-            state: present
-
-        - name: Clone 8812au driver (morrownr/8812au-20210820)
-          git:
-            repo: https://github.com/morrownr/8812au-20210820.git
-            dest: "{{ installers_base_path }}/8812au-20210820"
-
-        - name: Install RTL8812AU driver (non-interactive; run from repo dir)
-          command: ./install-driver.sh NoPrompt
-          args:
-            chdir: "{{ installers_base_path }}/8812au-20210820"
-          register: rtl8812au_install
-
-        - name: Mark RTL8812AU install success
-          set_fact:
-            rtl8812au_install_status: "installed"
-
-        - name: Log RTL8812AU driver install success
-          shell: |
-            echo "✅ RTL8812AU driver installed from morrownr/8812au-20210820" >> {{ log_file }}
-            echo "" >> {{ log_file }}
-
-      rescue:
-        - name: Mark RTL8812AU install failure
-          set_fact:
-            rtl8812au_install_status: "failed"
-
-        - name: Log RTL8812AU driver install failure
-          shell: |
-            echo "⚠️  RTL8812AU driver install failed" >> {{ log_file }}
-            echo "" >> {{ log_file }}
-          failed_when: false
-
-        - name: Warn RTL8812AU install failed
-          debug:
-            msg: "RTL8812AU driver install failed. WiFi may not work until driver is fixed or installed manually (https://github.com/morrownr/8812au-20210820)."
-      when:
-        - wifi_operator_decision == '1'
-        - wifi_path == 'expected_adapter'
-
-    - name: Enforce production policy for missing WiFi adapter
-      fail:
-        msg: "No WiFi adapter detected. Production mode requires a WiFi adapter."
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'production'
-        - wifi_path == 'no_adapter'
-
-    - name: Enforce production policy for unsupported non-native adapter
-      fail:
-        msg: "A non-RTL8812AU adapter was detected but no native wireless interface is available. Production mode requires a working WiFi adapter."
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'production'
-        - wifi_path == 'other_adapter'
-        - not (wifi_native_working | bool)
-
-    - name: Enforce production policy when RTL8812AU install fails
-      fail:
-        msg: "RTL8812AU adapter was detected, but driver installation failed. Production mode requires a working WiFi adapter."
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'production'
-        - wifi_path == 'expected_adapter'
-        - rtl8812au_install_status == 'failed'
-
-    - name: Warn when RTL8812AU install fails in test mode
-      debug:
-        msg: "RTL8812AU adapter was detected, but driver installation failed. Continuing because deployment mode is test/check."
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'test'
-        - wifi_path == 'expected_adapter'
-        - rtl8812au_install_status == 'failed'
-
-    - name: Warn about non-native adapter without working wireless interface (test mode)
-      debug:
-        msg: "Non-RTL8812AU adapter detected, but no wireless interface is up natively. Continuing because deployment mode is test/check."
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'test'
-        - wifi_path == 'other_adapter'
-        - not (wifi_native_working | bool)
-
-    - name: Mark WiFi status when using native non-RTL adapter
-      set_fact:
-        rtl8812au_install_status: "native_adapter_ok"
-      when:
-        - wifi_operator_decision == '1'
-        - wifi_path == 'other_adapter'
-        - wifi_native_working | bool
-
-    - name: Mark WiFi status when no adapter is acceptable in test mode
-      set_fact:
-        rtl8812au_install_status: "no_adapter_allowed_test"
-      when:
-        - wifi_operator_decision == '1'
-        - deployment_mode == 'test'
-        - wifi_path == 'no_adapter'
-
-    - name: Mark WiFi status when operator skipped WiFi handling
-      set_fact:
-        rtl8812au_install_status: "skipped_by_operator"
-      when: wifi_operator_decision == '2'
-
-    - name: Report WiFi readiness outcome
-      debug:
-        msg: "WiFi readiness outcome: {{ rtl8812au_install_status }}"
-
-    # ==========================================================
-    # 5. COMMON UTILITIES & MONITORING TOOLS
+    # 7. COMMON UTILITIES & MONITORING TOOLS
     # ==========================================================
     - name: Install general developer and monitoring tools
       apt:
@@ -587,7 +656,7 @@
     - name: Log tools installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
-        echo "5. COMMON UTILITIES & MONITORING TOOLS - $(date)" >> {{ log_file }}
+        echo "7. COMMON UTILITIES & MONITORING TOOLS - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         {{ base_versions.stdout_lines | map('regex_replace', '^', 'echo "') | map('regex_replace', '$', '" >> {{ log_file }}') | join('\n') }}
         echo "" >> {{ log_file }}

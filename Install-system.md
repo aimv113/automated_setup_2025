@@ -112,12 +112,20 @@ ansible-playbook ubuntu-setup.yml -K
 
 **Flags:** `-K` = sudo password; `-vv` = verbose (optional).
 
-**At the start the playbook will:**
+**Run model (now two-pass on fresh machines):**
+- **Pass 1 (kernel baseline):** installs/pins HWE kernel (`6.17.0-14-generic`) early, then stops if that kernel is not the currently running kernel.
+- Reboot: `sudo reboot`.
+- **Pass 2:** run the same command again; playbook now sees the new kernel, runs the WiFi readiness gate early, then continues with the rest of setup.
+
+**Early prompts/tasks:**
 - Show **network info** (Ethernet and WiFi MACs, IPs) for you to record.
 - Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip).
 - Prompt for **boot mode:** 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
-- Prompt for **Git user.name** and **user.email** (for commits on this machine).
-- Generate a **GitHub SSH key** and display it; you will be prompted to add it to GitHub (Settings → SSH and GPG keys → New SSH key), then press Enter to continue.
+- Prompt for **deployment mode** (`production` vs `test/check`) and early **WiFi readiness decision**.
+  - Option 1 = enforce WiFi policy.
+  - Option 2 = skip WiFi enforcement for this run (useful for testing).
+  - Option 3 = abort run.
+- Later in the run (after WiFi gate): prompt for **Git user.name**/**user.email** and GitHub SSH key setup.
 
 **What the playbook does:**
 - Deploys keys from `ssh-public-keys.txt` in the repo to `~/.ssh/authorized_keys` and configures SSH on port 33412 with **password authentication disabled** (key-only).

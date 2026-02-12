@@ -10,15 +10,18 @@ This document describes the full setup flow, what is automated, and what stays m
 2. **Ubuntu** – Install Ubuntu Desktop or Server (optionally send SSH keys during Server install).
 3. **SSH** – Enable SSH and add your public key to `~/.ssh/authorized_keys` on the server so you can use Terminus (or skip if you sent keys at install).
 4. **Clone repo** – On the server: `git clone ... automated_setup_2025`, `cd automated_setup_2025`.
-5. **Run playbook** – `ansible-playbook ubuntu-setup.yml -K`. At start you will see:
+5. **Run playbook (pass 1)** – `ansible-playbook ubuntu-setup.yml -K`. Early in the run it installs/pins the HWE kernel baseline (`6.17.0-14-generic`) and exits if that kernel is not active yet.
+6. **Reboot** – `sudo reboot`.
+7. **Run playbook again (pass 2)** – `ansible-playbook ubuntu-setup.yml -K`. At start you will see:
    - **Network info** (Ethernet/WiFi MACs, IPs) – record these if needed.
    - **Healthchecks.io** URL (optional; Enter to skip).
    - **Boot mode** – 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
-   - **Git user.name / user.email** for commits on this machine.
-   - **GitHub SSH key** – the playbook generates a key and displays it; add it to GitHub (Settings → SSH and GPG keys → New SSH key), then press Enter to continue.
-6. **Reboot** – `sudo reboot`.
-7. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass). Machine setup is then **complete** (networking and timezone are set by this playbook).
-8. **King_detector setup** – Run the setup script in the king_detector repo (see that repo’s admin/SETUP.md). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
+   - **Deployment mode + WiFi readiness decision** (runs early; option to skip WiFi enforcement for test/check runs).
+   - **Git user.name / user.email** for commits on this machine (later in run).
+   - **GitHub SSH key** – generated and displayed later in the run; add it to GitHub, then continue.
+8. **Reboot** – `sudo reboot`.
+9. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass). Machine setup is then **complete** (networking and timezone are set by this playbook).
+10. **King_detector setup** – Run the setup script in the king_detector repo (see that repo’s admin/SETUP.md). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
 
 ---
 
