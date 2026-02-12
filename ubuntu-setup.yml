@@ -375,14 +375,7 @@
 
     - name: Compute WiFi decision summary
       set_fact:
-        wifi_path: >-
-          {% if rtl8812au_present | bool %}
-          expected_adapter
-          {% elif wifi_other_adapter_detected | bool %}
-          other_adapter
-          {% else %}
-          no_adapter
-          {% endif %}
+        wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
         wifi_proposed_action: >-
           {% if rtl8812au_present | bool %}
           Install pinned RTL8812AU DKMS driver from morrownr/8812au-20210820.
