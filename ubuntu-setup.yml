@@ -337,9 +337,12 @@
         wifi_native_working: "{{ (wifi_wireless_ifaces.stdout_lines | default([]) | length) > 0 }}"
         rtl8812au_install_status: "not_attempted"
 
-    - name: Compute WiFi decision summary
+    - name: Compute WiFi kernel capability fact
       set_fact:
         wifi_kernel_supports_native_8812au: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
+
+    - name: Compute WiFi decision summary
+      set_fact:
         wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
         wifi_proposed_action: >-
           {% if (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (wifi_native_working | bool) %}
