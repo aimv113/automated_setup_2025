@@ -117,10 +117,11 @@ ansible-playbook ubuntu-setup.yml -K
 **Run model (now two-pass on fresh machines):**
 - **Pass 1 (kernel baseline):** installs/pins HWE kernel (`6.17.0-14-generic`) early, then stops if that kernel is not the currently running kernel.
 - Reboot: `sudo reboot`.
-- **Pass 2:** run the same command again; playbook now sees the new kernel, runs the WiFi readiness gate early, then continues with the rest of setup.
+- **Pass 2:** run the same command again; if the required kernel is active, playbook prompts for setup choices, runs the WiFi readiness gate early, then continues with the rest of setup.
 
 **Early prompts/tasks:**
 - Show **network info** (Ethernet and WiFi MACs, IPs) for you to record.
+- If required kernel is not active yet, playbook exits before interactive prompts.
 - Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip).
 - Prompt for **boot mode:** 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
 - Prompt for **deployment mode** (`production` vs `test/check`) and early **WiFi readiness decision**.

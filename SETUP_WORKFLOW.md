@@ -14,6 +14,8 @@ This document describes the full setup flow, what is automated, and what stays m
 6. **Reboot** – `sudo reboot`.
 7. **Run playbook again (pass 2)** – `ansible-playbook ubuntu-setup.yml -K`. At start you will see:
    - **Network info** (Ethernet/WiFi MACs, IPs) – record these if needed.
+   - If kernel baseline is still not active, the playbook exits before asking interactive questions.
+   - Once kernel baseline is active, it prompts for:
    - **Healthchecks.io** URL (optional; Enter to skip).
    - **Boot mode** – 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
    - **Deployment mode + WiFi readiness decision** (runs early; option to skip WiFi enforcement for test/check runs).

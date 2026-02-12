@@ -84,79 +84,6 @@
       changed_when: false
 
     # ==========================================================
-    # 0b. PROMPT FOR HEALTHCHECKS URL
-    # ==========================================================
-    - name: Prompt for Healthchecks.io URL
-      pause:
-        prompt: |
-
-          ============================================================
-          HEALTHCHECKS.IO SETUP
-          ============================================================
-
-          Please create a healthcheck at https://healthchecks.io
-
-          Steps:
-          1. Go to https://healthchecks.io and create a free account
-          2. Create a new check with name: "{{ ansible_hostname }}"
-          3. Set the period to 10 minutes (allows 5 min pings + buffer)
-          4. Copy the ping URL (looks like: https://hc-ping.com/YOUR-UUID-HERE)
-
-          Paste your Healthchecks.io ping URL (or press Enter to skip)
-      register: healthchecks_prompt
-      when: healthchecks_url is not defined
-
-    - name: Set healthchecks URL from user input or default
-      set_fact:
-        healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
-      when: healthchecks_url is not defined
-
-    - name: Set healthchecks URL if already defined
-      set_fact:
-        healthchecks_url: "{{ healthchecks_url }}"
-      when: healthchecks_url is defined
-
-    # ==========================================================
-    # 0c. PROMPT FOR BOOT MODE (GNOME vs minimal X / king_detector)
-    # ==========================================================
-    - name: Prompt for boot mode
-      pause:
-        prompt: |
-
-          ============================================================
-          BOOT MODE
-          ============================================================
-          Do you want:
-            1) GNOME to open on boot (full desktop)
-            2) Minimal X / king_detector approach (boot to server, no GNOME; xdotool-style)
-          Enter 1 or 2
-      register: boot_mode_prompt
-
-    - name: Set boot mode fact
-      set_fact:
-        boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
-
-    # ==========================================================
-    # 0d. PROMPT FOR DEPLOYMENT MODE (prod vs test/check)
-    # ==========================================================
-    - name: Prompt for deployment mode
-      pause:
-        prompt: |
-
-          ============================================================
-          DEPLOYMENT MODE
-          ============================================================
-          Choose mode:
-            1) Production (WiFi hardware required)
-            2) Test/check (WiFi hardware may be absent)
-          Enter 1 or 2
-      register: deployment_mode_prompt
-
-    - name: Set deployment mode fact
-      set_fact:
-        deployment_mode: "{{ 'production' if deployment_mode_prompt.user_input | default('1') | trim != '2' else 'test' }}"
-
-    # ==========================================================
     # 1. INITIALIZE LOG FILE
     # ==========================================================
     - name: Create log directory
@@ -296,7 +223,74 @@
         - not (hwe_kernel_active_matches_target | bool)
 
     # ==========================================================
-    # 4. WIFI READINESS (early gate before the rest of setup)
+    # 4. PROMPTS (after kernel baseline gate)
+    # ==========================================================
+    - name: Prompt for Healthchecks.io URL
+      pause:
+        prompt: |
+
+          ============================================================
+          HEALTHCHECKS.IO SETUP
+          ============================================================
+
+          Please create a healthcheck at https://healthchecks.io
+
+          Steps:
+          1. Go to https://healthchecks.io and create a free account
+          2. Create a new check with name: "{{ ansible_hostname }}"
+          3. Set the period to 10 minutes (allows 5 min pings + buffer)
+          4. Copy the ping URL (looks like: https://hc-ping.com/YOUR-UUID-HERE)
+
+          Paste your Healthchecks.io ping URL (or press Enter to skip)
+      register: healthchecks_prompt
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL from user input or default
+      set_fact:
+        healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL if already defined
+      set_fact:
+        healthchecks_url: "{{ healthchecks_url }}"
+      when: healthchecks_url is defined
+
+    - name: Prompt for boot mode
+      pause:
+        prompt: |
+
+          ============================================================
+          BOOT MODE
+          ============================================================
+          Do you want:
+            1) GNOME to open on boot (full desktop)
+            2) Minimal X / king_detector approach (boot to server, no GNOME; xdotool-style)
+          Enter 1 or 2
+      register: boot_mode_prompt
+
+    - name: Set boot mode fact
+      set_fact:
+        boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
+
+    - name: Prompt for deployment mode
+      pause:
+        prompt: |
+
+          ============================================================
+          DEPLOYMENT MODE
+          ============================================================
+          Choose mode:
+            1) Production (WiFi hardware required)
+            2) Test/check (WiFi hardware may be absent)
+          Enter 1 or 2
+      register: deployment_mode_prompt
+
+    - name: Set deployment mode fact
+      set_fact:
+        deployment_mode: "{{ 'production' if deployment_mode_prompt.user_input | default('1') | trim != '2' else 'test' }}"
+
+    # ==========================================================
+    # 5. WIFI READINESS (early gate before the rest of setup)
     # ==========================================================
     - name: Install WiFi detection tools
       apt:
