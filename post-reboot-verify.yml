@@ -10,6 +10,8 @@
     app_data_path: "{{ user_home }}"
     log_file: "/var/log/ansible-post-reboot-verify-{{ ansible_date_time.iso8601_basic_short }}.log"
     camera_static_start: 200
+    camera_probe_ip: "192.168.1.100"
+    camera_probe_temp_ip: "192.168.1.254"
     machine_network_remove_cloud_init: true
     machine_timezone: "America/Chicago"
     # WiFi: connect automatically to this SSID via nmcli (default OFFICEGST; open network, no password).
@@ -475,6 +477,68 @@
       failed_when: false
       changed_when: false
 
+    - name: 49a/53 Probe camera reachability on configured camera interfaces
+      shell: |
+        for iface in {{ (camera_static_config | default([])) | map(attribute='name') | join(' ') }}; do
+          [ -z "$iface" ] && continue
+          # Leave internet-capable interfaces untouched.
+          ping -c 1 -W 2 -I "$iface" 8.8.8.8 >/dev/null 2>&1 && continue
+          ping -c 1 -W 2 -I "$iface" "{{ camera_probe_ip }}" >/dev/null 2>&1 && echo "$iface" || true
+        done
+      register: camera_ping_ifaces_configured
+      changed_when: false
+      failed_when: false
+      when: camera_static_config is defined and camera_static_config | length > 0
+
+    - name: 49b/53 Probe camera reachability on other ethernet interfaces with temporary IP (non-fatal)
+      shell: |
+        probe_ip="{{ camera_probe_ip }}"
+        temp_ip="{{ camera_probe_temp_ip }}"
+        internet_if="{{ internet_interface | default('') }}"
+        configured_ifaces="{{ (camera_static_config | default([])) | map(attribute='name') | join(' ') }}"
+
+        for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
+          [ -z "$iface" ] && continue
+          [ -n "$internet_if" ] && [ "$iface" = "$internet_if" ] && continue
+          # Leave internet-capable interfaces untouched.
+          ping -c 1 -W 2 -I "$iface" 8.8.8.8 >/dev/null 2>&1 && continue
+          case " $configured_ifaces " in
+            *" $iface "*) continue ;;
+          esac
+
+          ip link set "$iface" up >/dev/null 2>&1 || true
+          added_temp=0
+          if ! ip -4 addr show dev "$iface" | grep -qE 'inet 192\.168\.1\.'; then
+            ip addr add "${temp_ip}/24" dev "$iface" >/dev/null 2>&1 && added_temp=1 || true
+          fi
+
+          if ping -c 1 -W 2 -I "$iface" "$probe_ip" >/dev/null 2>&1; then
+            echo "$iface"
+          fi
+
+          [ "$added_temp" -eq 1 ] && ip addr del "${temp_ip}/24" dev "$iface" >/dev/null 2>&1 || true
+        done
+      register: camera_ping_ifaces_fallback
+      changed_when: false
+      failed_when: false
+      when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
+
+    - name: 49c/53 Set camera reachability facts
+      set_fact:
+        camera_probe_success_ifaces: "{{ ((camera_ping_ifaces_configured.stdout_lines | default([])) + (camera_ping_ifaces_fallback.stdout_lines | default([]))) | select('match', '^[a-zA-Z]') | unique | list }}"
+        camera_setup_needs_manual: "{{ ((((camera_ping_ifaces_configured.stdout_lines | default([])) + (camera_ping_ifaces_fallback.stdout_lines | default([]))) | select('match', '^[a-zA-Z]') | list) | length) == 0 }}"
+
+    - name: 49d/53 Warn when camera network is not reachable and needs manual setup
+      debug:
+        msg: |
+          WARNING: Camera auto-detection could not verify connectivity to {{ camera_probe_ip }}.
+          No ethernet adapter successfully reached the camera target.
+          Manual setup likely required:
+          - Confirm camera power/cabling and camera IP.
+          - Re-run post-reboot-verify with camera connected.
+          - Manually assign 192.168.1.200/24 to the camera adapter if needed.
+      when: camera_setup_needs_manual | bool
+
     - name: 49/53 Log networking section
       shell: |
         echo "===========================================================" >> {{ log_file }}
@@ -487,6 +551,12 @@
         {% endfor %}
         {% if machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and machine_wifi_interface is defined and machine_wifi_interface | length > 0 %}
         echo "WiFi: {{ machine_wifi_interface }} -> {{ machine_wifi_ssid }} (2.4GHz priority 100, 5GHz priority 10)" >> {{ log_file }}
+        {% endif %}
+        echo "Camera probe target: {{ camera_probe_ip }}" >> {{ log_file }}
+        {% if camera_setup_needs_manual | default(true) %}
+        echo "WARNING: camera probe failed ({{ camera_probe_ip }} unreachable). Manual camera adapter setup required." >> {{ log_file }}
+        {% else %}
+        echo "Camera probe: reachable via {{ (camera_probe_success_ifaces | default([])) | join(', ') }}" >> {{ log_file }}
         {% endif %}
         echo "Netplan: 01-network-manager.yaml (renderer NM) + 99-machine-network.yaml" >> {{ log_file }}
         echo "" >> {{ log_file }}
@@ -533,6 +603,11 @@
         echo "" >> {{ log_file }}
         echo "WIFI-ONLY REMINDER: Before shipping, unplug ethernet and verify connectivity over WiFi ({{ machine_wifi_ssid }}) only." >> {{ log_file }}
         {% endif %}
+        {% if camera_setup_needs_manual | default(true) %}
+        echo "" >> {{ log_file }}
+        echo "WARNING: Camera adapter was not auto-verified ({{ camera_probe_ip }} unreachable)." >> {{ log_file }}
+        echo "Manual camera network setup required." >> {{ log_file }}
+        {% endif %}
         echo "" >> {{ log_file }}
         echo "To use the ML environment:" >> {{ log_file }}
         echo "  source ~/code/auto_test/activate.sh" >> {{ log_file }}
@@ -564,6 +639,11 @@
           {% if machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and machine_wifi_interface is defined and machine_wifi_interface | length > 0 %}
           ⚠️  WIFI-ONLY REMINDER: In operation this machine uses only WiFi ({{ machine_wifi_ssid }}) for internet.
           Before shipping, unplug ethernet and verify connectivity over WiFi only.
+          {% endif %}
+
+          {% if camera_setup_needs_manual | default(true) %}
+          WARNING: Camera adapter auto-detection did not verify reachability to {{ camera_probe_ip }}.
+          Manual camera networking setup is required.
           {% endif %}
 
           Log file: {{ log_file }}

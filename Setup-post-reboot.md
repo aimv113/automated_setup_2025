@@ -37,6 +37,8 @@ ansible-playbook post-reboot-verify.yml -K
 
 **WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, security fields are cleared (no password/key-mgmt values). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
 
+**Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
+
 ### WiFi verification and troubleshooting (terminal-first)
 
 Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
@@ -102,6 +104,61 @@ nmcli device status
 nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show <wifi_iface>
 sudo journalctl -u NetworkManager -b --no-pager | tail -n 120
 sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..au|rtw88|usb' | tail -n 150
+```
+
+---
+
+## 1b. Camera interface manual recovery (only if warning appears)
+
+Use this when `post-reboot-verify.yml` reports camera probe failure (`192.168.1.100 unreachable`).
+
+1. List ethernet interfaces:
+```bash
+ip -br link
+```
+
+2. Exclude internet-connected interfaces (leave these untouched):
+```bash
+for i in $(ls /sys/class/net); do
+  [ "$i" = "lo" ] && continue
+  [ -d "/sys/class/net/$i/wireless" ] && continue
+  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && echo "$i has internet (skip)"
+done
+```
+
+3. Probe remaining ethernet interfaces for camera reachability:
+```bash
+for i in $(ls /sys/class/net); do
+  [ "$i" = "lo" ] && continue
+  [ -d "/sys/class/net/$i/wireless" ] && continue
+  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && continue
+  sudo ip link set "$i" up
+  sudo ip addr add 192.168.1.254/24 dev "$i" 2>/dev/null || true
+  if ping -c 1 -W 2 -I "$i" 192.168.1.100 >/dev/null 2>&1; then
+    echo "camera_iface=$i"
+  fi
+  sudo ip addr del 192.168.1.254/24 dev "$i" 2>/dev/null || true
+done
+```
+
+4. Assign camera static IP on the found interface (replace `<camera_iface>`):
+```bash
+sudo ip addr flush dev <camera_iface>
+sudo ip addr add 192.168.1.200/24 dev <camera_iface>
+sudo ip link set <camera_iface> up
+ping -c 3 -I <camera_iface> 192.168.1.100
+```
+
+5. Persist in netplan (`/etc/netplan/99-machine-network.yaml`), then apply:
+```bash
+sudo nano /etc/netplan/99-machine-network.yaml
+sudo netplan generate && sudo netplan apply
+```
+
+6. Re-run verification playbook:
+```bash
+cd ~/automated_setup_2025
+ansible-playbook post-reboot-verify.yml -K -vv
 ```
 
 ---
