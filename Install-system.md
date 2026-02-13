@@ -97,20 +97,13 @@ ssh-keygen -R 192.168.0.132
 ```
 SSH into machine
 
-## 3. Install Ansible and clone repository
+## 3. Install Ansible and clone repository & Run the setup playbook
 
 ```bash
 sudo apt update
 sudo apt install ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025/
-```
-
----
-
-## 4. Run the setup playbook
-
-```bash
 ansible-playbook ubuntu-setup.yml -K
 ```
 
