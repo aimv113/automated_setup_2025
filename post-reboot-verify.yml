@@ -194,7 +194,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: 16/53 Create data/jpg/video structure in home (next to code)
+    - name: 16/53 Create data/jpg/video/ad_hoc structure in home (next to code)
       file:
         path: "{{ item }}"
         state: directory
@@ -207,6 +207,9 @@
         - "{{ app_data_path }}/data/video"
         - "{{ app_data_path }}/data/jpg/no_hook"
         - "{{ app_data_path }}/data/jpg/no_overlay"
+        - "{{ app_data_path }}/data/ad_hoc"
+        - "{{ app_data_path }}/data/ad_hoc/jpg"
+        - "{{ app_data_path }}/data/ad_hoc/video"
 
     # ==========================================================
     # 8. NETWORKING (NetworkManager + netplan: DHCP + camera static + optional WiFi)

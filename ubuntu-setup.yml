@@ -895,13 +895,16 @@
         - "{{ app_data_path }}/data/video"
         - "{{ app_data_path }}/data/jpg/no_hook"
         - "{{ app_data_path }}/data/jpg/no_overlay"
+        - "{{ app_data_path }}/data/ad_hoc"
+        - "{{ app_data_path }}/data/ad_hoc/jpg"
+        - "{{ app_data_path }}/data/ad_hoc/video"
 
     - name: 85/243 Log data folders creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "5b. DATA FOLDERS - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Created data/jpg/video structure at {{ app_data_path }}/data (next to code)" >> {{ log_file }}
+        echo "✅ Created data/jpg/video/ad_hoc structure at {{ app_data_path }}/data (next to code)" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
     # ==========================================================
