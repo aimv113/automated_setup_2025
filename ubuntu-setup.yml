@@ -45,7 +45,7 @@
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
     rtl8812au_usb_id: "0bda:8812"
     rtl8812au_dkms_repo_url: "https://github.com/morrownr/8812au-20210820.git"
-    rtl8812au_dkms_repo_version: "master"
+    rtl8812au_dkms_repo_version: "main"
     rtl8812au_dkms_repo_path: "{{ installers_base_path }}/8812au-20210820"
     hwe_kernel_meta_package: "linux-generic-hwe-24.04"
     hwe_kernel_headers_meta_package: "linux-headers-generic-hwe-24.04"
