@@ -122,6 +122,8 @@ ip -br link
 for i in $(ls /sys/class/net); do
   [ "$i" = "lo" ] && continue
   [ -d "/sys/class/net/$i/wireless" ] && continue
+  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
+  [ -e "/sys/class/net/$i/device" ] || continue
   ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && echo "$i has internet (skip)"
 done
 ```
@@ -131,6 +133,8 @@ done
 for i in $(ls /sys/class/net); do
   [ "$i" = "lo" ] && continue
   [ -d "/sys/class/net/$i/wireless" ] && continue
+  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
+  [ -e "/sys/class/net/$i/device" ] || continue
   ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && continue
   sudo ip link set "$i" up
   sudo ip addr add 192.168.1.254/24 dev "$i" 2>/dev/null || true

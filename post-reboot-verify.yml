@@ -244,12 +244,20 @@
       changed_when: false
       failed_when: false
 
-    - name: 21/53 List ethernet interfaces (exclude lo and wireless)
+    - name: 21/53 List physical ethernet interfaces (exclude wireless/virtual tunnel/overlay)
       shell: |
         for p in /sys/class/net/*; do
           iface="$(basename "$p")"
           [ "$iface" = "lo" ] && continue
           [ -d "$p/wireless" ] && continue
+          # Skip known virtual/tunnel/overlay interfaces that are not camera NIC candidates.
+          case "$iface" in
+            zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*)
+              continue
+              ;;
+          esac
+          # Require a backing device to avoid virtual interfaces (e.g., ZeroTier/Tailscale).
+          [ -e "$p/device" ] || continue
           [ -f "$p/type" ] && [ "$(cat "$p/type")" != "1" ] && continue
           echo "$iface"
         done
