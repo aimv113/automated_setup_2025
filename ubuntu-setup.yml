@@ -176,13 +176,7 @@
     - name: Set WiFi strategy facts
       set_fact:
         wifi_strategy_choice: "{{ (wifi_strategy_prompt.user_input | default('3') | trim) if (wifi_strategy_prompt.user_input | default('3') | trim) in ['1', '2', '3', '4', '5'] else '3' }}"
-        wifi_setup_strategy: >-
-          {% set choice = (wifi_strategy_prompt.user_input | default('3') | trim) %}
-          {% if choice == '1' %}hwe_kernel_update
-          {% elif choice == '2' %}dkms_preferred
-          {% elif choice == '4' %}manual
-          {% elif choice == '5' %}manual_test
-          {% else %}native_preferred{% endif %}
+        wifi_setup_strategy: "{{ {'1': 'hwe_kernel_update', '2': 'dkms_preferred', '4': 'manual', '5': 'manual_test'}.get((wifi_strategy_prompt.user_input | default('3') | trim), 'native_preferred') }}"
         deployment_mode: "{{ 'test' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else 'production' }}"
         wifi_operator_decision: "{{ '2' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else '1' }}"
 
@@ -382,11 +376,11 @@
       set_fact:
         wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
         wifi_proposed_action: >-
-          {% if wifi_setup_strategy == 'hwe_kernel_update' %}
+          {% if (wifi_setup_strategy | trim) == 'hwe_kernel_update' %}
           Keep HWE kernel path enforced. If WiFi is still unavailable, reboot into {{ hwe_target_kernel_release }} and re-run.
-          {% elif wifi_setup_strategy == 'dkms_preferred' and (rtl8812au_present | bool) %}
+          {% elif (wifi_setup_strategy | trim) == 'dkms_preferred' and (rtl8812au_present | bool) %}
           Attempt DKMS install for RTL8812AU (morrownr/8812au-20210820) and verify interface appears.
-          {% elif wifi_setup_strategy == 'dkms_preferred' and not (rtl8812au_present | bool) %}
+          {% elif (wifi_setup_strategy | trim) == 'dkms_preferred' and not (rtl8812au_present | bool) %}
           DKMS path selected but expected RTL8812AU adapter {{ rtl8812au_usb_id }} is not present.
           {% elif (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (wifi_native_working | bool) %}
           Use native in-kernel RTL8812AU support (rtw88_8812au); no external driver install.
@@ -404,7 +398,7 @@
 
     - name: Set whether WiFi confirmation prompt is required
       set_fact:
-        wifi_confirm_required: "{{ wifi_setup_strategy not in ['manual', 'manual_test'] }}"
+        wifi_confirm_required: "{{ ((wifi_setup_strategy | trim) not in ['manual', 'manual_test']) and (wifi_operator_decision == '1') }}"
 
     - name: Confirm WiFi approach with operator
       pause:
@@ -439,7 +433,7 @@
 
     - name: Keep WiFi operator decision from initial strategy choice
       debug:
-        msg: "WiFi decision pre-selected by strategy ({{ wifi_setup_strategy }}): {{ wifi_operator_decision }}"
+        msg: "WiFi decision pre-selected earlier (strategy={{ wifi_setup_strategy }}, decision={{ wifi_operator_decision }}); skipping readiness confirmation prompt."
       when: not (wifi_confirm_required | bool)
 
     - name: Abort on operator request
