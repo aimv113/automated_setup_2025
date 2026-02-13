@@ -84,6 +84,8 @@ Install and join ZeroTier so you can reach the machine from your laptop (e.g. fr
 curl -s https://install.zerotier.com | sudo bash
 sudo zerotier-cli join 8286ac0e475bfb64
 ```
+[ZeroTier network site](https://my.zerotier.com/network/8286ac0e475bfb64)
+Approve new system, copy IP address > terminus
 
 
 ### **!! update local machine hosts file with remote name, standard port for now !!**
