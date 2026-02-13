@@ -540,12 +540,23 @@
         - wifi_path == 'other_adapter'
         - not (wifi_native_working | bool)
 
+    - name: Enforce production policy when RTL8812AU adapter is not working after DKMS path
+      fail:
+        msg: "RTL8812AU adapter was detected and DKMS install was attempted, but no wireless interface is active. Fix adapter/driver state and re-run the playbook."
+      when:
+        - wifi_operator_decision == '1'
+        - deployment_mode == 'production'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - wifi_path == 'expected_adapter'
+        - not (wifi_native_working | bool)
+
     - name: Enforce production policy when RTL8812AU adapter is not working natively
       fail:
         msg: "RTL8812AU adapter was detected but no native wireless interface is active on kernel {{ ansible_kernel }}. Reboot into {{ hwe_target_kernel_release }} or fix adapter state."
       when:
         - wifi_operator_decision == '1'
         - deployment_mode == 'production'
+        - wifi_setup_strategy != 'dkms_preferred'
         - wifi_path == 'expected_adapter'
         - not (wifi_native_working | bool)
 
