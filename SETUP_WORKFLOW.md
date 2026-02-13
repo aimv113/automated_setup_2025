@@ -12,15 +12,16 @@ This document describes the full setup flow, what is automated, and what stays m
 4. **Clone repo** – On the server: `git clone ... automated_setup_2025`, `cd automated_setup_2025`.
 5. **Run playbook (pass 1)** – `ansible-playbook ubuntu-setup.yml -K`. Early in the run it installs/pins the HWE kernel baseline (`6.17.0-14-generic`) and exits if that kernel is not active yet.
 6. **Reboot** – `sudo reboot`.
-7. **Run playbook again (pass 2)** – `ansible-playbook ubuntu-setup.yml -K`. At start you will see:
-   - **Network info** (Ethernet/WiFi MACs, IPs) – record these if needed.
-   - If kernel baseline is still not active, the playbook exits before asking interactive questions.
+7. **Run playbook again (pass 2)** – `ansible-playbook ubuntu-setup.yml -K`.
+   - If kernel baseline is still not active, the playbook exits before asking most interactive questions.
    - Once kernel baseline is active, it prompts for:
-   - **Healthchecks.io** URL (optional; Enter to skip).
    - **Boot mode** – 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
    - **Deployment mode + WiFi readiness decision** (runs early; option to skip WiFi enforcement for test/check runs).
+   - Near the end of the run, it prompts for:
+   - **Healthchecks.io** URL (optional; Enter to skip).
+   - Near completion, it displays **network info** (Ethernet/WiFi MACs, IPs) for final recording.
    - **Git user.name / user.email** for commits on this machine (later in run).
-   - **GitHub SSH key** – generated and displayed later in the run; add it to GitHub, then continue.
+   - **GitHub SSH key** – standard `~/.ssh/id_ed25519` key is generated (if missing) and displayed later in the run; add it to GitHub, then continue.
 8. **Reboot** – `sudo reboot`.
 9. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass). Machine setup is then **complete** (networking and timezone are set by this playbook).
 10. **King_detector setup** – Run the setup script in the king_detector repo (see that repo’s admin/SETUP.md). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
@@ -40,9 +41,9 @@ This document describes the full setup flow, what is automated, and what stays m
 
 - Keys from `ssh-public-keys.txt` deployed to `~/.ssh/authorized_keys`.
 - SSH: port 33412, key-only (PasswordAuthentication no), single-place config (no duplicate lines).
-- Git: user.name, user.email, SSH default for GitHub (`url.insteadOf`), GitHub SSH key generated and displayed; you add the key to GitHub once.
+- Git: user.name, user.email, SSH default for GitHub (`url.insteadOf`), standard `~/.ssh/id_ed25519` key generated/displayed if missing; you add the key to GitHub once.
 - Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay` under `~/` (post-reboot-verify).
-- Network info (MACs, IPs) printed at playbook start for recording.
+- Network info (MACs, IPs) printed near playbook completion for recording.
 - **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager and writes a single netplan with renderer NetworkManager (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …; optional WiFi SSID/password). Removes 50-cloud-init to avoid conflicts.
 - **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
 - No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).

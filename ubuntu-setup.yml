@@ -62,31 +62,6 @@
   tasks:
 
     # ==========================================================
-    # 0. NETWORK INFO (for user to record)
-    # ==========================================================
-    - name: Gather network interface info for display
-      shell: |
-        echo "========== NETWORK INFO (record MACs and IPs) =========="
-        ip -br addr show | while read iface state rest; do
-          [ "$iface" = "lo" ] && continue
-          mac=$(ip link show "$iface" 2>/dev/null | grep 'link/ether' | awk '{print $2}')
-          [ -z "$mac" ] && mac="N/A"
-          echo "  $iface: state=$state MAC=$mac"
-          ip -4 addr show "$iface" 2>/dev/null | grep inet | awk '{print "    IP: "$2}'
-        done
-        echo "========================================================="
-      register: network_info_display
-      changed_when: false
-
-    - name: Display network info to user
-      debug:
-        msg: "{{ network_info_display.stdout_lines }}"
-
-    - name: Log that network info was displayed
-      shell: "echo 'Network info (MACs, IPs) displayed to user at start' >> {{ log_file }}"
-      changed_when: false
-
-    # ==========================================================
     # 1. INITIALIZE LOG FILE
     # ==========================================================
     - name: Create log directory
@@ -273,36 +248,6 @@
     # ==========================================================
     # 4. PROMPTS (after kernel baseline gate)
     # ==========================================================
-    - name: Prompt for Healthchecks.io URL
-      pause:
-        prompt: |
-
-          ============================================================
-          HEALTHCHECKS.IO SETUP
-          ============================================================
-
-          Please create a healthcheck at https://healthchecks.io
-
-          Steps:
-          1. Go to https://healthchecks.io and create a free account
-          2. Create a new check with name: "{{ ansible_hostname }}"
-          3. Set the period to 10 minutes (allows 5 min pings + buffer)
-          4. Copy the ping URL (looks like: https://hc-ping.com/YOUR-UUID-HERE)
-
-          Paste your Healthchecks.io ping URL (or press Enter to skip)
-      register: healthchecks_prompt
-      when: healthchecks_url is not defined
-
-    - name: Set healthchecks URL from user input or default
-      set_fact:
-        healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
-      when: healthchecks_url is not defined
-
-    - name: Set healthchecks URL if already defined
-      set_fact:
-        healthchecks_url: "{{ healthchecks_url }}"
-      when: healthchecks_url is defined
-
     - name: Prompt for boot mode
       pause:
         prompt: |
@@ -1912,6 +1857,39 @@
     - debug: msg="✅ Python {{ pyver.stdout }} installed."
 
     # ==========================================================
+    # 14b. HEALTHCHECKS.IO PROMPT (late, near completion)
+    # ==========================================================
+    - name: Prompt for Healthchecks.io URL
+      pause:
+        prompt: |
+
+          ============================================================
+          HEALTHCHECKS.IO SETUP
+          ============================================================
+
+          Please create a healthcheck at https://healthchecks.io
+
+          Steps:
+          1. Go to https://healthchecks.io and create a free account
+          2. Create a new check with name: "{{ ansible_hostname }}"
+          3. Set the period to 10 minutes (allows 5 min pings + buffer)
+          4. Copy the ping URL (looks like: https://hc-ping.com/YOUR-UUID-HERE)
+
+          Paste your Healthchecks.io ping URL (or press Enter to skip)
+      register: healthchecks_prompt
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL from user input or default
+      set_fact:
+        healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
+      when: healthchecks_url is not defined
+
+    - name: Set healthchecks URL if already defined
+      set_fact:
+        healthchecks_url: "{{ healthchecks_url }}"
+      when: healthchecks_url is defined
+
+    # ==========================================================
     # 15. HEALTHCHECKS.IO SERVICE
     # ==========================================================
     - name: Setup Healthchecks.io service
@@ -2084,7 +2062,7 @@
       when: needs_reboot
 
     # ==========================================================
-    # 17. GIT SETUP (SSH default, GitHub key – prompted at end of run)
+    # 17. GIT SETUP (SSH default, standard ed25519 key – prompted at end of run)
     # ==========================================================
     - name: Prompt for Git user name
       pause:
@@ -2122,7 +2100,7 @@
       become_user: "{{ ssh_user }}"
       changed_when: true
 
-    - name: Ensure .ssh exists for GitHub key
+    - name: Ensure .ssh exists for SSH key
       file:
         path: "{{ user_home }}/.ssh"
         state: directory
@@ -2130,30 +2108,30 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Generate SSH key for GitHub (ed25519)
+    - name: Generate standard SSH key (ed25519)
       command: >
-        ssh-keygen -t ed25519 -C "github-{{ ansible_hostname }}"
-        -f {{ user_home }}/.ssh/id_ed25519_github -N ""
+        ssh-keygen -t ed25519 -C "{{ ssh_user }}@{{ ansible_hostname }}"
+        -f {{ user_home }}/.ssh/id_ed25519 -N ""
       args:
-        creates: "{{ user_home }}/.ssh/id_ed25519_github"
+        creates: "{{ user_home }}/.ssh/id_ed25519"
       become_user: "{{ ssh_user }}"
 
-    - name: Ensure SSH config uses GitHub key for github.com
+    - name: Check whether SSH config exists
+      stat:
+        path: "{{ user_home }}/.ssh/config"
+      register: ssh_config_stat
+
+    - name: Remove legacy GitHub-specific SSH config block
       blockinfile:
         path: "{{ user_home }}/.ssh/config"
-        create: true
-        mode: '0600'
-        owner: "{{ ssh_user }}"
-        group: "{{ ssh_user }}"
-        block: |
-          Host github.com
-            IdentityFile {{ user_home }}/.ssh/id_ed25519_github
         marker: "# {mark} ANSIBLE MANAGED BLOCK - GitHub key"
+        state: absent
+      when: ssh_config_stat.stat.exists | default(false)
       become_user: "{{ ssh_user }}"
 
     - name: Read GitHub SSH public key
       slurp:
-        src: "{{ user_home }}/.ssh/id_ed25519_github.pub"
+        src: "{{ user_home }}/.ssh/id_ed25519.pub"
       register: github_key_content
 
     - name: Display GitHub SSH public key for user to add
@@ -2162,7 +2140,6 @@
           ========== ADD THIS KEY TO GITHUB ==========
           Settings → SSH and GPG keys → New SSH key
           Paste the key below, then press Enter in the playbook to continue.
-          ~/.ssh/config is set so git will use this key (no ssh-agent needed).
           ----------
           {{ github_key_content.content | b64decode | trim }}
           ----------
@@ -2178,8 +2155,33 @@
         echo "===========================================================" >> {{ log_file }}
         echo "17. GIT SETUP - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
-        echo "✅ Git configured (SSH for GitHub); key in ~/.ssh/id_ed25519_github" >> {{ log_file }}
+        echo "✅ Git configured (SSH for GitHub); key in ~/.ssh/id_ed25519" >> {{ log_file }}
         echo "" >> {{ log_file }}
+
+    # ==========================================================
+    # 17b. NETWORK INFO (for user to record, late in run)
+    # ==========================================================
+    - name: Gather network interface info for display
+      shell: |
+        echo "========== NETWORK INFO (record MACs and IPs) =========="
+        ip -br addr show | while read iface state rest; do
+          [ "$iface" = "lo" ] && continue
+          mac=$(ip link show "$iface" 2>/dev/null | grep 'link/ether' | awk '{print $2}')
+          [ -z "$mac" ] && mac="N/A"
+          echo "  $iface: state=$state MAC=$mac"
+          ip -4 addr show "$iface" 2>/dev/null | grep inet | awk '{print "    IP: "$2}'
+        done
+        echo "========================================================="
+      register: network_info_display
+      changed_when: false
+
+    - name: Display network info to user
+      debug:
+        msg: "{{ network_info_display.stdout_lines }}"
+
+    - name: Log late network info display
+      shell: "echo 'Network info (MACs, IPs) displayed near completion' >> {{ log_file }}"
+      changed_when: false
 
     # ==========================================================
     # 18. FINAL MESSAGE

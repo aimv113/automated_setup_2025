@@ -114,10 +114,10 @@ ansible-playbook ubuntu-setup.yml -K
 - Reboot: `sudo reboot`.
 - **Pass 2:** run the same command again; if the required kernel is active, playbook prompts for setup choices, runs the WiFi readiness gate early, then continues with the rest of setup.
 
-**Early prompts/tasks:**
-- Show **network info** (Ethernet and WiFi MACs, IPs) for you to record.
-- If required kernel is not active yet, playbook exits before interactive prompts.
-- Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip).
+**Prompt timing notes:**
+- If required kernel is not active yet, playbook exits before most interactive prompts.
+- Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip) happens near the end of the run.
+- **Network info** (Ethernet and WiFi MACs, IPs) is displayed near completion so WiFi/interface state is final.
 - Prompt for **boot mode:** 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
 - Prompt for **deployment mode** (`production` vs `test/check`) and early **WiFi readiness decision**.
   - Option 1 = enforce WiFi policy.
@@ -127,9 +127,9 @@ ansible-playbook ubuntu-setup.yml -K
 
 **What the playbook does:**
 - Deploys keys from `ssh-public-keys.txt` in the repo to `~/.ssh/authorized_keys` and configures SSH on port 33412 with **password authentication disabled** (key-only).
-- Pre-flight checks, system update, tools, firewall, Git (SSH default, GitHub key), data folders, Tailscale, RealVNC, VS Code, display/VM detection, NVIDIA driver, CUDA, TensorRT, Docker, Python, Healthchecks, ML environment.
+- Pre-flight checks, system update, tools, firewall, Git (SSH default, standard ed25519 key), data folders, Tailscale, RealVNC, VS Code, display/VM detection, NVIDIA driver, CUDA, TensorRT, Docker, Python, Healthchecks, ML environment.
 - **Scheduled reboots** are **not** installed by the playbook; use root crontab (see [Post boot instructions](Setup-post-reboot.md)).
-- **Git/SSH:** The playbook sets `~/.ssh/config` so `github.com` uses `~/.ssh/id_ed25519_github`. After adding the key to GitHub, `git clone`/`git push` should work without running `ssh-agent` or `ssh-add`. If you still get errors (e.g. in some GUI or non-interactive shells), run: `eval "$(ssh-agent -s)"` then `ssh-add ~/.ssh/id_ed25519_github`.
+- **Git/SSH:** The playbook uses the standard `~/.ssh/id_ed25519` key and shows the public key so you can add it to GitHub. After adding the key, `git clone`/`git push` should work with SSH GitHub URLs. If you still get errors (e.g. in some GUI or non-interactive shells), run: `eval "$(ssh-agent -s)"` then `ssh-add ~/.ssh/id_ed25519`.
 
 **If you need to lock down SSH (port 33412, key-only) before the first playbook run**, do that manually (e.g. edit `/etc/ssh/sshd_config` and `~/.ssh/authorized_keys`, then restart ssh). Otherwise the playbook does it for you after adding keys from the repo.
 
