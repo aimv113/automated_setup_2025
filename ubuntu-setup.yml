@@ -2239,16 +2239,22 @@
 
   handlers:
     - name: 238/243 restart sshd
+      listen: restart sshd
       systemd: { name: sshd, state: restarted }
     - name: 239/243 restart docker
+      listen: restart docker
       systemd: { name: docker, state: restarted }
     - name: 240/243 restart gdm3
+      listen: restart gdm3
       systemd: { name: gdm3, state: restarted }
       when: gdm3_config.stat.exists | default(false)
     - name: 241/243 restart lightdm
+      listen: restart lightdm
       systemd: { name: lightdm, state: restarted }
       when: lightdm_config.stat.exists | default(false)
     - name: 242/243 update ldconfig
+      listen: update ldconfig
       command: ldconfig
     - name: 243/243 reload systemd
+      listen: reload systemd
       systemd: { daemon_reload: yes }
