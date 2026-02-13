@@ -44,6 +44,9 @@
 
     log_file: "/var/log/ansible-ubuntu-setup-{{ ansible_date_time.iso8601_basic_short }}.log"
     rtl8812au_usb_id: "0bda:8812"
+    rtl8812au_dkms_repo_url: "https://github.com/morrownr/8812au-20210820.git"
+    rtl8812au_dkms_repo_version: "master"
+    rtl8812au_dkms_repo_path: "{{ installers_base_path }}/8812au-20210820"
     hwe_kernel_meta_package: "linux-generic-hwe-24.04"
     hwe_kernel_headers_meta_package: "linux-headers-generic-hwe-24.04"
     hwe_kernel_pin_enabled: true
@@ -152,7 +155,50 @@
         msg: "✅ Pre-flight checks passed: {{ opt_free_space.stdout }}GB available, network: {{ 'online' if nvidia_network_check.status is defined else 'offline' }}"
 
     # ==========================================================
-    # 2. HWE KERNEL BASELINE
+    # 1b. WIFI STRATEGY (first decision)
+    # ==========================================================
+    - name: Prompt for WiFi strategy
+      pause:
+        prompt: |
+
+          ============================================================
+          WIFI STRATEGY (FIRST DECISION)
+          ============================================================
+          Choose the WiFi path for this run:
+            1) HWE kernel update path (install/pin HWE kernel and reboot gate)
+            2) DKMS path for RTL8812AU if adapter {{ rtl8812au_usb_id }} is present
+            3) Native Linux driver path (use only in-kernel drivers if supported)
+            4) Manual WiFi setup (I will handle WiFi myself)
+            5) Testing / no WiFi now (same behavior as manual skip)
+          Enter 1, 2, 3, 4, or 5
+      register: wifi_strategy_prompt
+
+    - name: Set WiFi strategy facts
+      set_fact:
+        wifi_strategy_choice: "{{ (wifi_strategy_prompt.user_input | default('3') | trim) if (wifi_strategy_prompt.user_input | default('3') | trim) in ['1', '2', '3', '4', '5'] else '3' }}"
+        wifi_setup_strategy: >-
+          {% set choice = (wifi_strategy_prompt.user_input | default('3') | trim) %}
+          {% if choice == '1' %}hwe_kernel_update
+          {% elif choice == '2' %}dkms_preferred
+          {% elif choice == '4' %}manual
+          {% elif choice == '5' %}manual_test
+          {% else %}native_preferred{% endif %}
+        deployment_mode: "{{ 'test' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else 'production' }}"
+        wifi_operator_decision: "{{ '2' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else '1' }}"
+
+    - name: Log WiFi strategy choice
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "1b. WIFI STRATEGY (FIRST DECISION) - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Choice: {{ wifi_strategy_choice }}" >> {{ log_file }}
+        echo "Strategy: {{ wifi_setup_strategy }}" >> {{ log_file }}
+        echo "Deployment mode: {{ deployment_mode }}" >> {{ log_file }}
+        echo "Initial WiFi operator decision: {{ wifi_operator_decision }}" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # ==========================================================
+    # 2. HWE KERNEL BASELINE (optional, based on WiFi strategy)
     # ==========================================================
     - name: Install Ubuntu 24.04 HWE kernel meta packages
       apt:
@@ -162,20 +208,25 @@
           - "{{ hwe_kernel_headers_meta_package }}"
         state: present
       register: hwe_kernel_meta_install
+      when: wifi_setup_strategy == 'hwe_kernel_update'
 
     - name: Install pinned HWE kernel package set
       apt:
         name: "{{ hwe_kernel_pinned_packages }}"
         state: present
       register: hwe_kernel_pin_install
-      when: hwe_kernel_pin_enabled | bool
+      when:
+        - wifi_setup_strategy == 'hwe_kernel_update'
+        - hwe_kernel_pin_enabled | bool
 
     - name: Hold pinned HWE kernel packages
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
       loop: "{{ hwe_kernel_pinned_packages }}"
-      when: hwe_kernel_pin_enabled | bool
+      when:
+        - wifi_setup_strategy == 'hwe_kernel_update'
+        - hwe_kernel_pin_enabled | bool
 
     - name: Set kernel baseline facts
       set_fact:
@@ -189,11 +240,12 @@
         echo "2. HWE KERNEL BASELINE - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
         echo "Running kernel: {{ ansible_kernel }}" >> {{ log_file }}
-        echo "HWE meta packages installed: {{ hwe_kernel_meta_install.changed }}" >> {{ log_file }}
+        echo "HWE strategy selected: {{ wifi_setup_strategy == 'hwe_kernel_update' }}" >> {{ log_file }}
+        echo "HWE meta packages installed: {{ hwe_kernel_meta_install.changed | default(false) }}" >> {{ log_file }}
         {% if hwe_kernel_pin_enabled %}
         echo "Pinned kernel target: {{ hwe_target_kernel_release }}" >> {{ log_file }}
         echo "Pinned kernel packages updated: {{ hwe_kernel_pin_install.changed | default(false) }}" >> {{ log_file }}
-        echo "Pinned kernel active now: {{ hwe_kernel_active_matches_target }}" >> {{ log_file }}
+        echo "Pinned kernel active now: {{ hwe_kernel_active_matches_target | default(false) }}" >> {{ log_file }}
         {% endif %}
         echo "RTL8812AU native support available on running kernel: {{ hwe_kernel_native_8812au_supported }}" >> {{ log_file }}
         echo "" >> {{ log_file }}
@@ -204,6 +256,7 @@
           Kernel baseline packages are installed, but the running kernel is still {{ ansible_kernel }}.
           Reboot before relying on native RTL8812AU support (target: {{ hwe_target_kernel_release }}).
       when:
+        - wifi_setup_strategy == 'hwe_kernel_update'
         - hwe_kernel_pin_enabled | bool
         - not (hwe_kernel_active_matches_target | bool)
 
@@ -218,6 +271,7 @@
           Required kernel: {{ hwe_target_kernel_release }}
           Reboot now (sudo reboot), then re-run this playbook.
       when:
+        - wifi_setup_strategy == 'hwe_kernel_update'
         - hwe_kernel_pin_enabled | bool
         - hwe_kernel_require_reboot_before_continue | bool
         - not (hwe_kernel_active_matches_target | bool)
@@ -271,23 +325,6 @@
     - name: Set boot mode fact
       set_fact:
         boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
-
-    - name: Prompt for deployment mode
-      pause:
-        prompt: |
-
-          ============================================================
-          DEPLOYMENT MODE
-          ============================================================
-          Choose mode:
-            1) Production (WiFi hardware required)
-            2) Test/check (WiFi hardware may be absent)
-          Enter 1 or 2
-      register: deployment_mode_prompt
-
-    - name: Set deployment mode fact
-      set_fact:
-        deployment_mode: "{{ 'production' if deployment_mode_prompt.user_input | default('1') | trim != '2' else 'test' }}"
 
     # ==========================================================
     # 5. WIFI READINESS (early gate before the rest of setup)
@@ -345,8 +382,14 @@
       set_fact:
         wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
         wifi_proposed_action: >-
-          {% if (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (wifi_native_working | bool) %}
-          Use native in-kernel RTL8812AU support (rtw88_8812au); no external DKMS driver install.
+          {% if wifi_setup_strategy == 'hwe_kernel_update' %}
+          Keep HWE kernel path enforced. If WiFi is still unavailable, reboot into {{ hwe_target_kernel_release }} and re-run.
+          {% elif wifi_setup_strategy == 'dkms_preferred' and (rtl8812au_present | bool) %}
+          Attempt DKMS install for RTL8812AU (morrownr/8812au-20210820) and verify interface appears.
+          {% elif wifi_setup_strategy == 'dkms_preferred' and not (rtl8812au_present | bool) %}
+          DKMS path selected but expected RTL8812AU adapter {{ rtl8812au_usb_id }} is not present.
+          {% elif (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (wifi_native_working | bool) %}
+          Use native in-kernel RTL8812AU support (rtw88_8812au); no external driver install.
           {% elif (rtl8812au_present | bool) and (wifi_kernel_supports_native_8812au | bool) and (not wifi_native_working | bool) %}
           RTL8812AU is present and kernel supports it, but no wireless interface is active; fail in production.
           {% elif (rtl8812au_present | bool) and (not wifi_kernel_supports_native_8812au | bool) %}
@@ -359,6 +402,10 @@
           No WiFi adapter detected; fail in production and continue in test/check mode.
           {% endif %}
 
+    - name: Set whether WiFi confirmation prompt is required
+      set_fact:
+        wifi_confirm_required: "{{ wifi_setup_strategy not in ['manual', 'manual_test'] }}"
+
     - name: Confirm WiFi approach with operator
       pause:
         prompt: |
@@ -366,6 +413,7 @@
           ============================================================
           WIFI READINESS DECISION
           ============================================================
+          Selected strategy: {{ wifi_setup_strategy }}
           Deployment mode: {{ deployment_mode }}
           Running kernel: {{ ansible_kernel }}
           Native RTL8812AU support on running kernel: {{ wifi_kernel_supports_native_8812au }}
@@ -382,29 +430,103 @@
             3) Abort run now
           Enter 1, 2, or 3
       register: wifi_plan_prompt
+      when: wifi_confirm_required | bool
 
-    - name: Set WiFi operator decision
+    - name: Set WiFi operator decision from confirmation prompt
       set_fact:
         wifi_operator_decision: "{{ (wifi_plan_prompt.user_input | default('1') | trim) if (wifi_plan_prompt.user_input | default('1') | trim) in ['1', '2', '3'] else '1' }}"
+      when: wifi_confirm_required | bool
+
+    - name: Keep WiFi operator decision from initial strategy choice
+      debug:
+        msg: "WiFi decision pre-selected by strategy ({{ wifi_setup_strategy }}): {{ wifi_operator_decision }}"
+      when: not (wifi_confirm_required | bool)
 
     - name: Abort on operator request
       fail:
         msg: "Operator aborted during WiFi readiness decision."
       when: wifi_operator_decision == '3'
 
+    - name: Install DKMS prerequisites for RTL8812AU (strategy option 2)
+      apt:
+        name:
+          - dkms
+          - bc
+          - git
+          - build-essential
+          - linux-headers-generic
+        state: present
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
+    - name: Fetch RTL8812AU DKMS source
+      git:
+        repo: "{{ rtl8812au_dkms_repo_url }}"
+        dest: "{{ rtl8812au_dkms_repo_path }}"
+        version: "{{ rtl8812au_dkms_repo_version }}"
+        update: yes
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
+    - name: Run RTL8812AU DKMS installer
+      command: bash install-driver.sh NoPrompt
+      args:
+        chdir: "{{ rtl8812au_dkms_repo_path }}"
+      register: rtl8812au_dkms_install
+      changed_when: true
+      failed_when:
+        - deployment_mode == 'production'
+        - rtl8812au_dkms_install.rc != 0
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
+    - name: Re-detect wireless interfaces after DKMS path
+      shell: |
+        for iface in /sys/class/net/*; do
+          iface_name="$(basename "$iface")"
+          if [ -d "/sys/class/net/${iface_name}/wireless" ]; then
+            echo "${iface_name}"
+          fi
+        done
+      register: wifi_wireless_ifaces_after_dkms
+      changed_when: false
+      failed_when: false
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
+    - name: Update WiFi working fact after DKMS path
+      set_fact:
+        wifi_native_working: "{{ (wifi_wireless_ifaces_after_dkms.stdout_lines | default([]) | length) > 0 }}"
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
     - name: Log WiFi readiness decision
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "4. WIFI READINESS - $(date)" >> {{ log_file }}
         echo "===========================================================" >> {{ log_file }}
+        echo "Selected strategy: {{ wifi_setup_strategy }}" >> {{ log_file }}
         echo "Deployment mode: {{ deployment_mode }}" >> {{ log_file }}
         echo "Running kernel: {{ ansible_kernel }}" >> {{ log_file }}
         echo "Native RTL8812AU support on running kernel: {{ wifi_kernel_supports_native_8812au }}" >> {{ log_file }}
         echo "Expected adapter ({{ rtl8812au_usb_id }}): {{ rtl8812au_present }}" >> {{ log_file }}
         echo "Other adapter detected: {{ wifi_other_adapter_detected }}" >> {{ log_file }}
-        echo "Wireless interfaces: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}" >> {{ log_file }}
+        echo "Wireless interfaces: {{ (wifi_wireless_ifaces_after_dkms.stdout_lines | default(wifi_wireless_ifaces.stdout_lines | default([])) | join(', ')) if (wifi_wireless_ifaces_after_dkms.stdout_lines | default(wifi_wireless_ifaces.stdout_lines | default([])) | length > 0) else 'none' }}" >> {{ log_file }}
         echo "Proposed action: {{ wifi_proposed_action | regex_replace('\\n', ' ') }}" >> {{ log_file }}
         echo "Operator decision: {{ wifi_operator_decision }}" >> {{ log_file }}
+        {% if wifi_setup_strategy == 'dkms_preferred' and rtl8812au_present %}
+        echo "DKMS install rc: {{ rtl8812au_dkms_install.rc | default('not-run') }}" >> {{ log_file }}
+        {% endif %}
         echo "" >> {{ log_file }}
 
     - name: Enforce production policy for missing WiFi adapter
@@ -451,11 +573,21 @@
         - wifi_path == 'other_adapter'
         - not (wifi_native_working | bool)
 
+    - name: Mark WiFi status when RTL8812AU adapter works after DKMS path
+      set_fact:
+        rtl8812au_install_status: "dkms_expected_adapter_ok"
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - wifi_path == 'expected_adapter'
+        - wifi_native_working | bool
+
     - name: Mark WiFi status when RTL8812AU adapter is working natively
       set_fact:
         rtl8812au_install_status: "native_expected_adapter_ok"
       when:
         - wifi_operator_decision == '1'
+        - wifi_setup_strategy != 'dkms_preferred'
         - wifi_path == 'expected_adapter'
         - wifi_native_working | bool
 
