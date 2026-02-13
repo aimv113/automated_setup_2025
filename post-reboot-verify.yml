@@ -20,7 +20,7 @@
     # ==========================================================
     # 1. LOG INITIALIZATION
     # ==========================================================
-    - name: Initialize verification log file
+    - name: 1/53 Initialize verification log file
       shell: |
         echo "===========================================================" > {{ log_file }}
         echo "POST-REBOOT VERIFICATION - $(date)" >> {{ log_file }}
@@ -33,12 +33,12 @@
     # ==========================================================
     # 2. VERIFY NVIDIA DRIVER
     # ==========================================================
-    - name: Check NVIDIA driver is loaded
+    - name: 2/53 Check NVIDIA driver is loaded
       shell: nvidia-smi
       register: nvidia_smi
       failed_when: nvidia_smi.rc != 0
 
-    - name: Log NVIDIA driver status
+    - name: 3/53 Log NVIDIA driver status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "1. NVIDIA DRIVER VERIFICATION - $(date)" >> {{ log_file }}
@@ -54,12 +54,12 @@
     # ==========================================================
     # 3. VERIFY CUDA TOOLKIT
     # ==========================================================
-    - name: Check CUDA version
+    - name: 4/53 Check CUDA version
       shell: /usr/local/cuda-13.0/bin/nvcc --version
       register: nvcc_version
       failed_when: nvcc_version.rc != 0
 
-    - name: Log CUDA toolkit status
+    - name: 5/53 Log CUDA toolkit status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "2. CUDA TOOLKIT VERIFICATION - $(date)" >> {{ log_file }}
@@ -75,12 +75,12 @@
     # ==========================================================
     # 4. VERIFY DOCKER + NVIDIA RUNTIME
     # ==========================================================
-    - name: Test Docker with NVIDIA runtime
+    - name: 6/53 Test Docker with NVIDIA runtime
       shell: docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu24.04 nvidia-smi
       register: docker_nvidia
       failed_when: docker_nvidia.rc != 0
 
-    - name: Log Docker NVIDIA runtime status
+    - name: 7/53 Log Docker NVIDIA runtime status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "3. DOCKER + NVIDIA RUNTIME VERIFICATION - $(date)" >> {{ log_file }}
@@ -96,7 +96,7 @@
     # ==========================================================
     # 5. INSTALL ML PACKAGES WITH CUDA SUPPORT
     # ==========================================================
-    - name: Install PyTorch with CUDA 13.0 support
+    - name: 8/53 Install PyTorch with CUDA 13.0 support
       become: yes
       become_user: "{{ ssh_user }}"
       shell: |
@@ -106,7 +106,7 @@
         executable: /bin/bash
       register: torch_install
 
-    - name: Install ultralytics, tensorrt, and onnxruntime-gpu
+    - name: 9/53 Install ultralytics, tensorrt, and onnxruntime-gpu
       become: yes
       become_user: "{{ ssh_user }}"
       shell: |
@@ -116,7 +116,7 @@
         executable: /bin/bash
       register: ml_packages_install
 
-    - name: Log ML package installation
+    - name: 10/53 Log ML package installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "4. ML PACKAGES INSTALLATION - $(date)" >> {{ log_file }}
@@ -131,7 +131,7 @@
     # ==========================================================
     # 6. VERIFY PYTORCH CUDA SUPPORT
     # ==========================================================
-    - name: Verify CUDA is available to PyTorch
+    - name: 11/53 Verify CUDA is available to PyTorch
       become: yes
       become_user: "{{ ssh_user }}"
       shell: |
@@ -152,7 +152,7 @@
       register: cuda_verification
       failed_when: "'CUDA available: False' in cuda_verification.stdout"
 
-    - name: Log PyTorch CUDA status
+    - name: 12/53 Log PyTorch CUDA status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "5. PYTORCH CUDA VERIFICATION - $(date)" >> {{ log_file }}
@@ -166,12 +166,12 @@
     # ==========================================================
     # 7. VERIFY TENSORRT
     # ==========================================================
-    - name: Check TensorRT installation
+    - name: 13/53 Check TensorRT installation
       shell: dpkg -l | grep tensorrt
       register: tensorrt_check
       failed_when: tensorrt_check.rc != 0
 
-    - name: Log TensorRT status
+    - name: 14/53 Log TensorRT status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "6. TENSORRT VERIFICATION - $(date)" >> {{ log_file }}
@@ -186,7 +186,7 @@
     # ==========================================================
     # 7. DATA FOLDERS (videos and jpgs for app)
     # ==========================================================
-    - name: Ensure app data base path exists
+    - name: 15/53 Ensure app data base path exists
       file:
         path: "{{ app_data_path }}"
         state: directory
@@ -194,7 +194,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Create data/jpg/video structure in home (next to code)
+    - name: 16/53 Create data/jpg/video structure in home (next to code)
       file:
         path: "{{ item }}"
         state: directory
@@ -213,30 +213,33 @@
     # Netplan is configured with renderer: NetworkManager; on Ubuntu Server
     # NetworkManager is not installed by default (systemd-networkd is), so we install it.
     # ==========================================================
-    - name: Ensure NetworkManager is installed (server default is systemd-networkd; we use NM as netplan renderer)
+    - name: 17/53 Ensure networking tools are installed (NetworkManager, rfkill, iw)
       apt:
-        name: network-manager
+        name:
+          - network-manager
+          - rfkill
+          - iw
         state: present
 
-    - name: Ensure NetworkManager is enabled and started
+    - name: 18/53 Ensure NetworkManager is enabled and started
       systemd:
         name: NetworkManager
         state: started
         enabled: true
 
-    - name: Write netplan 01-network-manager.yaml (renderer NetworkManager)
+    - name: 19/53 Write netplan 01-network-manager.yaml (renderer NetworkManager)
       template:
         src: 01-network-manager.yaml
         dest: /etc/netplan/01-network-manager.yaml
         mode: "0600"
 
-    - name: Get default route interface (has internet)
+    - name: 20/53 Get default route interface (has internet)
       shell: ip route show default 2>/dev/null | awk '{print $5}' | head -1
       register: default_route_iface
       changed_when: false
       failed_when: false
 
-    - name: List ethernet interfaces (exclude lo and wireless)
+    - name: 21/53 List ethernet interfaces (exclude lo and wireless)
       shell: |
         for p in /sys/class/net/*; do
           iface="$(basename "$p")"
@@ -248,7 +251,7 @@
       register: ethernet_ifaces_raw
       changed_when: false
 
-    - name: Bring up ethernet interfaces before link detection (non-fatal)
+    - name: 22/53 Bring up ethernet interfaces before link detection (non-fatal)
       shell: |
         for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
           [ -n "$iface" ] && ip link set "$iface" up >/dev/null 2>&1 || true
@@ -257,7 +260,7 @@
       failed_when: false
       when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
 
-    - name: List connected ethernet interfaces (carrier up or operstate up)
+    - name: 23/53 List connected ethernet interfaces (carrier up or operstate up)
       shell: |
         for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
           [ -z "$iface" ] && continue
@@ -274,11 +277,11 @@
       failed_when: false
       when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
 
-    - name: Set internet interface (default route or single ethernet fallback)
+    - name: 24/53 Set internet interface (default route or single ethernet fallback)
       set_fact:
         internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else ((ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first) if (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '')) }}"
 
-    - name: Build list of camera interfaces (connected ethernet, no internet; exclude internet interface to avoid duplicate)
+    - name: 25/53 Build list of camera interfaces (connected ethernet, no internet; exclude internet interface to avoid duplicate)
       shell: |
         default_if="{{ default_route_iface.stdout }}"
         internet_if="{{ internet_interface | default('') }}"
@@ -294,11 +297,11 @@
       changed_when: false
       failed_when: false
 
-    - name: Set camera_interfaces fact
+    - name: 26/53 Set camera_interfaces fact
       set_fact:
         camera_interfaces: "{{ camera_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list }}"
 
-    - name: Build camera static config (name and address per interface)
+    - name: 27/53 Build camera static config (name and address per interface)
       set_fact:
         camera_static_config: "{{ camera_static_config | default([]) + [{'name': item, 'address': '192.168.1.' ~ (camera_static_start + (camera_static_config | default([]) | length)) ~ '/24'}] }}"
       loop: "{{ camera_interfaces }}"
@@ -306,17 +309,17 @@
       loop_control:
         label: "{{ item }}"
 
-    - name: Warn when multiple connected ethernet interfaces but no default route (skipping netplan)
+    - name: 28/53 Warn when multiple connected ethernet interfaces but no default route (skipping netplan)
       debug:
         msg: "No default route and multiple connected ethernet interfaces; skipping netplan. Fix network or set default route and re-run."
       when: (default_route_iface.stdout | length == 0) and (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length > 1)
 
-    - name: Set machine_netplan_ethernets (internet DHCP + camera static)
+    - name: 29/53 Set machine_netplan_ethernets (internet DHCP + camera static)
       set_fact:
         machine_netplan_ethernets: "{{ ([{'name': internet_interface, 'dhcp4': True}] if internet_interface else []) + (camera_static_config | default([]) | map('combine', {'dhcp4': False}) | list) }}"
       when: (default_route_iface.stdout | length > 0) or (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) or (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1)
 
-    - name: Detect wireless interface when WiFi SSID is set (tolerates no WLAN)
+    - name: 30/53 Detect wireless interface when WiFi SSID is set (tolerates no WLAN)
       shell: |
         for i in /sys/class/net/*/wireless; do
           [ -d "$i" ] && echo "${i%/wireless}" | sed 's|.*/net/||' && break
@@ -327,12 +330,12 @@
       failed_when: false
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
 
-    - name: Set machine_wifi_interface from detected WiFi device
+    - name: 31/53 Set machine_wifi_interface from detected WiFi device
       set_fact:
         machine_wifi_interface: "{{ wifi_interface_out.stdout }}"
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and wifi_interface_out.stdout is defined and wifi_interface_out.stdout | length > 0
 
-    - name: Pause when no WiFi adapter (setup incomplete) — continue or abort
+    - name: 32/53 Pause when no WiFi adapter (setup incomplete) — continue or abort
       pause:
         prompt: |
           No WiFi adapter detected. This machine cannot connect to "{{ machine_wifi_ssid }}".
@@ -341,45 +344,45 @@
         echo: true
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
 
-    - name: Log warning when WiFi skipped (no adapter)
+    - name: 33/53 Log warning when WiFi skipped (no adapter)
       debug:
         msg: "WiFi skipped: no wireless interface; machine cannot connect to {{ machine_wifi_ssid }}. Setup incomplete."
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
 
-    - name: "Set apply_machine_network (we will write netplan: ethernets and/or WiFi)"
+    - name: 34/53 "Set apply_machine_network (we will write netplan: ethernets and/or WiFi)"
       set_fact:
         apply_machine_network: "{{ (machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0) or (machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is defined and machine_wifi_interface | length > 0)) }}"
 
-    - name: Stat 50-cloud-init.yaml
+    - name: 35/53 Stat 50-cloud-init.yaml
       stat:
         path: /etc/netplan/50-cloud-init.yaml
       register: cloud_init_netplan_stat
       when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool
 
-    - name: Backup 50-cloud-init.yaml if present
+    - name: 36/53 Backup 50-cloud-init.yaml if present
       copy:
         src: /etc/netplan/50-cloud-init.yaml
         dest: /etc/netplan/50-cloud-init.yaml.bak
         remote_src: yes
       when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool and (cloud_init_netplan_stat is defined and cloud_init_netplan_stat.stat.exists | default(false))
 
-    - name: Remove 50-cloud-init.yaml
+    - name: 37/53 Remove 50-cloud-init.yaml
       file:
         path: /etc/netplan/50-cloud-init.yaml
         state: absent
       when: machine_network_remove_cloud_init and apply_machine_network | default(false) | bool
 
-    - name: Write netplan 99-machine-network.yaml
+    - name: 38/53 Write netplan 99-machine-network.yaml
       template:
         src: 99-machine-network.yaml.j2
         dest: /etc/netplan/99-machine-network.yaml
         mode: "0600"
       when: apply_machine_network | default(false) | bool
 
-    - name: Apply netplan (safe even if SSID absent)
+    - name: 39/53 Apply netplan (safe even if SSID absent)
       command: netplan generate && netplan apply
 
-    - name: Set WiFi device to managed by NetworkManager
+    - name: 40/53 Set WiFi device to managed by NetworkManager
       command: nmcli device set "{{ machine_wifi_interface }}" managed yes
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
@@ -387,10 +390,26 @@
       failed_when: false
       changed_when: false
 
+    - name: 41/53 Ensure WiFi radio is enabled (non-fatal)
+      command: nmcli radio wifi on
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
+    - name: 42/53 Bring WiFi device up via NetworkManager (non-fatal)
+      command: nmcli device connect "{{ machine_wifi_interface }}"
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
     # WiFi: two NM profiles (2.4 + 5 GHz), autoconnect priority 2.4 > 5; open network (no auth).
-    - name: Create NM WiFi profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred)
+    - name: 43/53 Create NM WiFi profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred)
       command: >
-        nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-2.4GHz" ssid "{{ machine_wifi_ssid }}"
+        nmcli connection add type wifi ifname "{{ machine_wifi_interface }}" con-name "{{ machine_wifi_ssid }}-2.4GHz" ssid "{{ machine_wifi_ssid }}"
         wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
@@ -399,9 +418,9 @@
       failed_when: false
       changed_when: nm_add_24.rc == 0
 
-    - name: Create NM WiFi profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback)
+    - name: 44/53 Create NM WiFi profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback)
       command: >
-        nmcli connection add type wifi con-name "{{ machine_wifi_ssid }}-5GHz" ssid "{{ machine_wifi_ssid }}"
+        nmcli connection add type wifi ifname "{{ machine_wifi_interface }}" con-name "{{ machine_wifi_ssid }}-5GHz" ssid "{{ machine_wifi_ssid }}"
         wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
@@ -410,36 +429,50 @@
       failed_when: false
       changed_when: nm_add_5.rc == 0
 
-    - name: Align NM profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred; open network)
+    - name: 45/53 Align NM profile {{ machine_wifi_ssid }}-2.4GHz (2.4GHz preferred; open network)
       command: >
         nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz"
+        connection.interface-name "{{ machine_wifi_interface }}"
         wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
-        wifi-sec.key-mgmt none
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
       failed_when: false
 
-    - name: Align NM profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback; open network)
+    - name: 46/53 Align NM profile {{ machine_wifi_ssid }}-5GHz (5GHz fallback; open network)
       command: >
         nmcli connection modify "{{ machine_wifi_ssid }}-5GHz"
+        connection.interface-name "{{ machine_wifi_interface }}"
         wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
-        wifi-sec.key-mgmt none
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
       failed_when: false
 
-    - name: Connect to WiFi only if SSID is visible (non-fatal)
+    - name: 47/53 Clear WiFi security fields for open network profiles
+      command: >
+        nmcli connection modify "{{ item }}"
+        802-11-wireless-security.key-mgmt ""
+        802-11-wireless-security.psk ""
+      loop:
+        - "{{ machine_wifi_ssid }}-2.4GHz"
+        - "{{ machine_wifi_ssid }}-5GHz"
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+
+    - name: 48/53 Connect to WiFi only if SSID is visible (non-fatal)
       shell: |
-        nmcli -t -f SSID dev wifi list | grep -Fx "{{ machine_wifi_ssid }}" >/dev/null && nmcli dev wifi connect "{{ machine_wifi_ssid }}" || true
+        nmcli dev wifi rescan >/dev/null 2>&1 || true
+        nmcli -t -f SSID dev wifi list | grep -Fx "{{ machine_wifi_ssid }}" >/dev/null && (nmcli connection up "{{ machine_wifi_ssid }}-2.4GHz" || nmcli connection up "{{ machine_wifi_ssid }}-5GHz") || true
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
       failed_when: false
       changed_when: false
 
-    - name: Log networking section
+    - name: 49/53 Log networking section
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "8. NETWORKING (NetworkManager + netplan) - $(date)" >> {{ log_file }}
@@ -456,7 +489,7 @@
         echo "" >> {{ log_file }}
       when: apply_machine_network | default(false) | bool
 
-    - name: Log networking skipped (no default route with multiple interfaces, no interfaces, or WiFi requested but no wireless interface)
+    - name: 50/53 Log networking skipped (no default route with multiple interfaces, no interfaces, or WiFi requested but no wireless interface)
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "8. NETWORKING - skipped" >> {{ log_file }}
@@ -466,11 +499,11 @@
     # ==========================================================
     # 9. TIMEZONE
     # ==========================================================
-    - name: Set timezone
+    - name: 51/53 Set timezone
       timezone:
         name: "{{ machine_timezone }}"
 
-    - name: Log timezone section
+    - name: 52/53 Log timezone section
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "9. TIMEZONE - $(date)" >> {{ log_file }}
@@ -484,7 +517,7 @@
     # ==========================================================
     # 10. FINAL SUMMARY
     # ==========================================================
-    - name: Log verification summary
+    - name: 53/53 Log verification summary
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "VERIFICATION SUMMARY - $(date)" >> {{ log_file }}

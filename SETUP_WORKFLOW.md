@@ -44,7 +44,7 @@ This document describes the full setup flow, what is automated, and what stays m
 - Git: user.name, user.email, SSH default for GitHub (`url.insteadOf`), standard `~/.ssh/id_ed25519` key generated/displayed if missing; you add the key to GitHub once.
 - Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay` under `~/` (post-reboot-verify).
 - Network info (MACs, IPs) printed near playbook completion for recording.
-- **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager and writes a single netplan with renderer NetworkManager (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …; optional WiFi SSID/password). Removes 50-cloud-init to avoid conflicts.
+- **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager, `rfkill`, and `iw`, then writes a single netplan with renderer NetworkManager (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …; optional WiFi SSID). For open WiFi, it clears security fields and does not pin BSSID. Removes 50-cloud-init to avoid conflicts.
 - **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
 - No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).
 

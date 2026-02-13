@@ -35,7 +35,74 @@ ansible-playbook post-reboot-verify.yml -K
 
 **Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
 
-**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook creates two NM profiles (no bring-up at create): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). Idempotent **modify** tasks keep settings aligned each run. Optional non-fatal connect only when SSID is visible; if OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. The network is open (no password). To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
+**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, security fields are cleared (no password/key-mgmt values). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
+
+### WiFi verification and troubleshooting (terminal-first)
+
+Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
+
+1. Confirm tools and interface:
+```bash
+which nmcli rfkill iw
+ip -br link
+iw dev
+```
+
+2. Check soft/hard block and radio state:
+```bash
+rfkill list
+nmcli radio all
+```
+
+3. If blocked/down, un-block and bring device up:
+```bash
+sudo rfkill unblock all
+nmcli radio wifi on
+sudo ip link set <wifi_iface> up
+nmcli device set <wifi_iface> managed yes
+nmcli device connect <wifi_iface>
+```
+
+4. Scan and confirm the expected SSID is visible:
+```bash
+nmcli dev wifi rescan
+nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E '^\*|IN-USE|OFFICEGST'
+```
+
+5. Validate open-network profile settings (no security fields, no BSSID pin):
+```bash
+nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless.band,802-11-wireless.bssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk connection show "OFFICEGST-2.4GHz"
+nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless.band,802-11-wireless.bssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk connection show "OFFICEGST-5GHz"
+```
+
+6. If old/incorrect profiles exist, recreate clean open-network profiles:
+```bash
+IFACE="<wifi_iface>"
+SSID="OFFICEGST"
+nmcli -t -f NAME connection show | grep -qx "${SSID}-2.4GHz" && nmcli connection delete "${SSID}-2.4GHz" || true
+nmcli -t -f NAME connection show | grep -qx "${SSID}-5GHz" && nmcli connection delete "${SSID}-5GHz" || true
+nmcli -t -f NAME connection show | grep -qx "${SSID}" && nmcli connection delete "${SSID}" || true
+nmcli connection add type wifi ifname "${IFACE}" con-name "${SSID}-2.4GHz" ssid "${SSID}" 802-11-wireless.band bg connection.autoconnect yes connection.autoconnect-priority 100 ipv4.method auto ipv6.method auto
+nmcli connection add type wifi ifname "${IFACE}" con-name "${SSID}-5GHz" ssid "${SSID}" 802-11-wireless.band a connection.autoconnect yes connection.autoconnect-priority 10 ipv4.method auto ipv6.method auto
+nmcli connection modify "${SSID}-2.4GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
+nmcli connection modify "${SSID}-5GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
+nmcli connection up "${SSID}-2.4GHz" || nmcli connection up "${SSID}-5GHz"
+```
+
+7. Confirm link + IP + route:
+```bash
+iw dev <wifi_iface> link
+ip a show <wifi_iface>
+ip route
+```
+
+8. Quick failure triage if still not connected:
+```bash
+nmcli device status
+nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show <wifi_iface>
+sudo journalctl -u NetworkManager -b --no-pager | tail -n 120
+sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..au|rtw88|usb' | tail -n 150
+```
 
 ---
 
