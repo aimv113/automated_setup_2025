@@ -480,6 +480,26 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
+    - name: Refresh module dependency map after RTL8812AU DKMS install
+      command: depmod -a
+      changed_when: true
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
+    - name: Load RTL8812AU module after DKMS install
+      command: modprobe 8812au
+      register: rtl8812au_modprobe
+      changed_when: true
+      failed_when:
+        - deployment_mode == 'production'
+        - rtl8812au_modprobe.rc != 0
+      when:
+        - wifi_operator_decision == '1'
+        - wifi_setup_strategy == 'dkms_preferred'
+        - rtl8812au_present | bool
+
     - name: Re-detect wireless interfaces after DKMS path
       shell: |
         for iface in /sys/class/net/*; do
@@ -491,6 +511,9 @@
       register: wifi_wireless_ifaces_after_dkms
       changed_when: false
       failed_when: false
+      retries: 5
+      delay: 2
+      until: (wifi_wireless_ifaces_after_dkms.stdout_lines | default([]) | length) > 0
       when:
         - wifi_operator_decision == '1'
         - wifi_setup_strategy == 'dkms_preferred'
@@ -520,6 +543,7 @@
         echo "Operator decision: {{ wifi_operator_decision }}" >> {{ log_file }}
         {% if wifi_setup_strategy == 'dkms_preferred' and rtl8812au_present %}
         echo "DKMS install rc: {{ rtl8812au_dkms_install.rc | default('not-run') }}" >> {{ log_file }}
+        echo "modprobe 8812au rc: {{ rtl8812au_modprobe.rc | default('not-run') }}" >> {{ log_file }}
         {% endif %}
         echo "" >> {{ log_file }}
 
