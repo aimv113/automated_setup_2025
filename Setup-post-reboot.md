@@ -240,15 +240,20 @@ EOF
 **Manual steps after the script:**
 
 1. **Rsync models** (from your Mac):  
-   `rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:~/data/models/`
-2. **Camera time:** SSH forward camera, open browser, set camera time to match computer:  
-   `ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>` then open `http://localhost:8080`.
-
+   ```bash
+   rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:~/data/models/
+   ```
+3. **Camera time:** SSH forward camera, open browser, set camera time to match computer:  
+   ```bash
+   ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>` then open `http://localhost:8080
+   ```
    Make sure timezone of remote machine and camera match (timezone is set by post-reboot-verify).
-3. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
-4. **Start crane** (on the machine when ready):  
-   `sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f`
-5. **FFMPEG** :  
+4. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
+5. **Start crane** (on the machine when ready):
+   ```bash
+   sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f
+   ```
+6. **FFMPEG** :  
    ```bash
    sudo apt update && sudo apt install ffmpeg -y
    ```
