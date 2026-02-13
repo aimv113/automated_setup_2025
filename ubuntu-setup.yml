@@ -64,13 +64,13 @@
     # ==========================================================
     # 1. INITIALIZE LOG FILE
     # ==========================================================
-    - name: Create log directory
+    - name: 1/243 Create log directory
       file:
         path: /var/log
         state: directory
         mode: '0755'
     
-    - name: Initialize log file with header
+    - name: 2/243 Initialize log file with header
       copy:
         dest: "{{ log_file }}"
         content: |
@@ -85,18 +85,18 @@
     # ==========================================================
     # 1. PRE-FLIGHT VALIDATION
     # ==========================================================
-    - name: Check available disk space on /opt
+    - name: 3/243 Check available disk space on /opt
       shell: df -BG /opt | tail -1 | awk '{print $4}' | sed 's/G//'
       register: opt_free_space
       changed_when: false
       failed_when: false
 
-    - name: Fail if insufficient disk space
+    - name: 4/243 Fail if insufficient disk space
       fail:
         msg: "Insufficient disk space on /opt. Available: {{ opt_free_space.stdout }}GB, Required: 5GB minimum for installers"
       when: opt_free_space.stdout | int < 5
 
-    - name: Test network connectivity to NVIDIA
+    - name: 5/243 Test network connectivity to NVIDIA
       uri:
         url: "https://developer.download.nvidia.com/"
         method: HEAD
@@ -106,7 +106,7 @@
       failed_when: false
       changed_when: false
 
-    - name: Test network connectivity to CUDA repos
+    - name: 6/243 Test network connectivity to CUDA repos
       uri:
         url: "https://developer.download.nvidia.com/compute/cuda/"
         method: HEAD
@@ -116,7 +116,7 @@
       failed_when: false
       changed_when: false
 
-    - name: Log pre-flight validation
+    - name: 7/243 Log pre-flight validation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "1. PRE-FLIGHT VALIDATION - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
@@ -132,7 +132,7 @@
     # ==========================================================
     # 1b. WIFI STRATEGY (first decision)
     # ==========================================================
-    - name: Prompt for WiFi strategy
+    - name: 8/243 Prompt for WiFi strategy
       pause:
         prompt: |
 
@@ -148,14 +148,14 @@
           Enter 1, 2, 3, 4, or 5
       register: wifi_strategy_prompt
 
-    - name: Set WiFi strategy facts
+    - name: 9/243 Set WiFi strategy facts
       set_fact:
         wifi_strategy_choice: "{{ (wifi_strategy_prompt.user_input | default('3') | trim) if (wifi_strategy_prompt.user_input | default('3') | trim) in ['1', '2', '3', '4', '5'] else '3' }}"
         wifi_setup_strategy: "{{ {'1': 'hwe_kernel_update', '2': 'dkms_preferred', '4': 'manual', '5': 'manual_test'}.get((wifi_strategy_prompt.user_input | default('3') | trim), 'native_preferred') }}"
         deployment_mode: "{{ 'test' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else 'production' }}"
         wifi_operator_decision: "{{ '2' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else '1' }}"
 
-    - name: Log WiFi strategy choice
+    - name: 10/243 Log WiFi strategy choice
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "1b. WIFI STRATEGY (FIRST DECISION) - $(date)" >> {{ log_file }}
@@ -169,7 +169,7 @@
     # ==========================================================
     # 2. HWE KERNEL BASELINE (optional, based on WiFi strategy)
     # ==========================================================
-    - name: Install Ubuntu 24.04 HWE kernel meta packages
+    - name: 11/243 Install Ubuntu 24.04 HWE kernel meta packages
       apt:
         update_cache: yes
         name:
@@ -179,7 +179,7 @@
       register: hwe_kernel_meta_install
       when: wifi_setup_strategy == 'hwe_kernel_update'
 
-    - name: Install pinned HWE kernel package set
+    - name: 12/243 Install pinned HWE kernel package set
       apt:
         name: "{{ hwe_kernel_pinned_packages }}"
         state: present
@@ -188,7 +188,7 @@
         - wifi_setup_strategy == 'hwe_kernel_update'
         - hwe_kernel_pin_enabled | bool
 
-    - name: Hold pinned HWE kernel packages
+    - name: 13/243 Hold pinned HWE kernel packages
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
@@ -197,13 +197,13 @@
         - wifi_setup_strategy == 'hwe_kernel_update'
         - hwe_kernel_pin_enabled | bool
 
-    - name: Set kernel baseline facts
+    - name: 14/243 Set kernel baseline facts
       set_fact:
         hwe_target_kernel_release: "{{ hwe_kernel_pin_version }}-{{ hwe_kernel_flavor }}"
         hwe_kernel_active_matches_target: "{{ ansible_kernel == (hwe_kernel_pin_version ~ '-' ~ hwe_kernel_flavor) }}"
         hwe_kernel_native_8812au_supported: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
 
-    - name: Log kernel baseline status
+    - name: 15/243 Log kernel baseline status
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "2. HWE KERNEL BASELINE - $(date)" >> {{ log_file }}
@@ -219,7 +219,7 @@
         echo "RTL8812AU native support available on running kernel: {{ hwe_kernel_native_8812au_supported }}" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
-    - name: Display kernel baseline reminder when reboot is needed
+    - name: 16/243 Display kernel baseline reminder when reboot is needed
       debug:
         msg: |
           Kernel baseline packages are installed, but the running kernel is still {{ ansible_kernel }}.
@@ -232,7 +232,7 @@
     # ==========================================================
     # 3. KERNEL REBOOT GATE (early exit)
     # ==========================================================
-    - name: Stop run until pinned kernel is active
+    - name: 17/243 Stop run until pinned kernel is active
       fail:
         msg: |
           Kernel baseline is installed but not active yet.
@@ -248,7 +248,7 @@
     # ==========================================================
     # 4. PROMPTS (after kernel baseline gate)
     # ==========================================================
-    - name: Prompt for boot mode
+    - name: 18/243 Prompt for boot mode
       pause:
         prompt: |
 
@@ -261,40 +261,40 @@
           Enter 1 or 2
       register: boot_mode_prompt
 
-    - name: Set boot mode fact
+    - name: 19/243 Set boot mode fact
       set_fact:
         boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
 
     # ==========================================================
     # 5. WIFI READINESS (early gate before the rest of setup)
     # ==========================================================
-    - name: Install WiFi detection tools
+    - name: 20/243 Install WiFi detection tools
       apt:
         name:
           - usbutils
           - pciutils
         state: present
 
-    - name: Detect expected RTL8812AU adapter
+    - name: 21/243 Detect expected RTL8812AU adapter
       shell: lsusb | grep -qi "{{ rtl8812au_usb_id }}"
       register: wifi_expected_usb
       changed_when: false
       failed_when: false
 
-    - name: Detect other likely USB WiFi adapters
+    - name: 22/243 Detect other likely USB WiFi adapters
       shell: |
         lsusb | grep -Eiv "{{ rtl8812au_usb_id }}" | grep -Ei 'Wireless|WiFi|WLAN|802\.11|Atheros|Ralink|MediaTek|Qualcomm|Broadcom|Realtek.*(881|882|8723|88)'
       register: wifi_other_usb
       changed_when: false
       failed_when: false
 
-    - name: Detect PCIe wireless adapters
+    - name: 23/243 Detect PCIe wireless adapters
       shell: lspci -nn | grep -Ei 'Network controller|Wireless|802\.11'
       register: wifi_pci
       changed_when: false
       failed_when: false
 
-    - name: Detect currently working wireless interfaces
+    - name: 24/243 Detect currently working wireless interfaces
       shell: |
         for iface in /sys/class/net/*; do
           iface_name="$(basename "$iface")"
@@ -306,18 +306,18 @@
       changed_when: false
       failed_when: false
 
-    - name: Set WiFi classification facts
+    - name: 25/243 Set WiFi classification facts
       set_fact:
         rtl8812au_present: "{{ wifi_expected_usb.rc == 0 }}"
         wifi_other_adapter_detected: "{{ (wifi_other_usb.stdout | default('') | trim | length > 0) or (wifi_pci.stdout | default('') | trim | length > 0) }}"
         wifi_native_working: "{{ (wifi_wireless_ifaces.stdout_lines | default([]) | length) > 0 }}"
         rtl8812au_install_status: "not_attempted"
 
-    - name: Compute WiFi kernel capability fact
+    - name: 26/243 Compute WiFi kernel capability fact
       set_fact:
         wifi_kernel_supports_native_8812au: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
 
-    - name: Compute WiFi decision summary
+    - name: 27/243 Compute WiFi decision summary
       set_fact:
         wifi_path: "{{ 'expected_adapter' if (rtl8812au_present | bool) else ('other_adapter' if (wifi_other_adapter_detected | bool) else 'no_adapter') }}"
         wifi_proposed_action: >-
@@ -341,11 +341,11 @@
           No WiFi adapter detected; fail in production and continue in test/check mode.
           {% endif %}
 
-    - name: Set whether WiFi confirmation prompt is required
+    - name: 28/243 Set whether WiFi confirmation prompt is required
       set_fact:
         wifi_confirm_required: "{{ ((wifi_setup_strategy | trim) not in ['manual', 'manual_test']) and (wifi_operator_decision == '1') }}"
 
-    - name: Confirm WiFi approach with operator
+    - name: 29/243 Confirm WiFi approach with operator
       pause:
         prompt: |
 
@@ -371,22 +371,22 @@
       register: wifi_plan_prompt
       when: wifi_confirm_required | bool
 
-    - name: Set WiFi operator decision from confirmation prompt
+    - name: 30/243 Set WiFi operator decision from confirmation prompt
       set_fact:
         wifi_operator_decision: "{{ (wifi_plan_prompt.user_input | default('1') | trim) if (wifi_plan_prompt.user_input | default('1') | trim) in ['1', '2', '3'] else '1' }}"
       when: wifi_confirm_required | bool
 
-    - name: Keep WiFi operator decision from initial strategy choice
+    - name: 31/243 Keep WiFi operator decision from initial strategy choice
       debug:
         msg: "WiFi decision pre-selected earlier (strategy={{ wifi_setup_strategy }}, decision={{ wifi_operator_decision }}); skipping readiness confirmation prompt."
       when: not (wifi_confirm_required | bool)
 
-    - name: Abort on operator request
+    - name: 32/243 Abort on operator request
       fail:
         msg: "Operator aborted during WiFi readiness decision."
       when: wifi_operator_decision == '3'
 
-    - name: Install DKMS prerequisites for RTL8812AU (strategy option 2)
+    - name: 33/243 Install DKMS prerequisites for RTL8812AU (strategy option 2)
       apt:
         name:
           - dkms
@@ -400,7 +400,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Fetch RTL8812AU DKMS source
+    - name: 34/243 Fetch RTL8812AU DKMS source
       git:
         repo: "{{ rtl8812au_dkms_repo_url }}"
         dest: "{{ rtl8812au_dkms_repo_path }}"
@@ -411,7 +411,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Run RTL8812AU DKMS installer
+    - name: 35/243 Run RTL8812AU DKMS installer
       command: bash install-driver.sh NoPrompt
       args:
         chdir: "{{ rtl8812au_dkms_repo_path }}"
@@ -425,7 +425,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Refresh module dependency map after RTL8812AU DKMS install
+    - name: 36/243 Refresh module dependency map after RTL8812AU DKMS install
       command: depmod -a
       changed_when: true
       when:
@@ -433,7 +433,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Load RTL8812AU module after DKMS install
+    - name: 37/243 Load RTL8812AU module after DKMS install
       command: modprobe 8812au
       register: rtl8812au_modprobe
       changed_when: true
@@ -445,7 +445,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Re-detect wireless interfaces after DKMS path
+    - name: 38/243 Re-detect wireless interfaces after DKMS path
       shell: |
         for iface in /sys/class/net/*; do
           iface_name="$(basename "$iface")"
@@ -464,7 +464,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Update WiFi working fact after DKMS path
+    - name: 39/243 Update WiFi working fact after DKMS path
       set_fact:
         wifi_native_working: "{{ (wifi_wireless_ifaces_after_dkms.stdout_lines | default([]) | length) > 0 }}"
       when:
@@ -472,7 +472,7 @@
         - wifi_setup_strategy == 'dkms_preferred'
         - rtl8812au_present | bool
 
-    - name: Log WiFi readiness decision
+    - name: 40/243 Log WiFi readiness decision
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "4. WIFI READINESS - $(date)" >> {{ log_file }}
@@ -492,7 +492,7 @@
         {% endif %}
         echo "" >> {{ log_file }}
 
-    - name: Enforce production policy for missing WiFi adapter
+    - name: 41/243 Enforce production policy for missing WiFi adapter
       fail:
         msg: "No WiFi adapter detected. Production mode requires a WiFi adapter."
       when:
@@ -500,7 +500,7 @@
         - deployment_mode == 'production'
         - wifi_path == 'no_adapter'
 
-    - name: Enforce production policy for unsupported non-native adapter
+    - name: 42/243 Enforce production policy for unsupported non-native adapter
       fail:
         msg: "A non-RTL8812AU adapter was detected but no native wireless interface is available. Production mode requires a working WiFi adapter."
       when:
@@ -509,7 +509,7 @@
         - wifi_path == 'other_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Enforce production policy when RTL8812AU adapter is not working after DKMS path
+    - name: 43/243 Enforce production policy when RTL8812AU adapter is not working after DKMS path
       fail:
         msg: "RTL8812AU adapter was detected and DKMS install was attempted, but no wireless interface is active. Fix adapter/driver state and re-run the playbook."
       when:
@@ -519,7 +519,7 @@
         - wifi_path == 'expected_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Enforce production policy when RTL8812AU adapter is not working natively
+    - name: 44/243 Enforce production policy when RTL8812AU adapter is not working natively
       fail:
         msg: "RTL8812AU adapter was detected but no native wireless interface is active on kernel {{ ansible_kernel }}. Reboot into {{ hwe_target_kernel_release }} or fix adapter state."
       when:
@@ -529,7 +529,7 @@
         - wifi_path == 'expected_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Warn when RTL8812AU adapter is present but not active (test mode)
+    - name: 45/243 Warn when RTL8812AU adapter is present but not active (test mode)
       debug:
         msg: "RTL8812AU adapter is present but no wireless interface is active on kernel {{ ansible_kernel }}. Continuing because deployment mode is test/check."
       when:
@@ -538,7 +538,7 @@
         - wifi_path == 'expected_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Warn about non-native adapter without working wireless interface (test mode)
+    - name: 46/243 Warn about non-native adapter without working wireless interface (test mode)
       debug:
         msg: "Non-RTL8812AU adapter detected, but no wireless interface is up natively. Continuing because deployment mode is test/check."
       when:
@@ -547,7 +547,7 @@
         - wifi_path == 'other_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Mark WiFi status when RTL8812AU adapter works after DKMS path
+    - name: 47/243 Mark WiFi status when RTL8812AU adapter works after DKMS path
       set_fact:
         rtl8812au_install_status: "dkms_expected_adapter_ok"
       when:
@@ -556,7 +556,7 @@
         - wifi_path == 'expected_adapter'
         - wifi_native_working | bool
 
-    - name: Mark WiFi status when RTL8812AU adapter is working natively
+    - name: 48/243 Mark WiFi status when RTL8812AU adapter is working natively
       set_fact:
         rtl8812au_install_status: "native_expected_adapter_ok"
       when:
@@ -565,7 +565,7 @@
         - wifi_path == 'expected_adapter'
         - wifi_native_working | bool
 
-    - name: Mark WiFi status when RTL8812AU adapter is present but not active (test mode)
+    - name: 49/243 Mark WiFi status when RTL8812AU adapter is present but not active (test mode)
       set_fact:
         rtl8812au_install_status: "expected_adapter_not_working_test"
       when:
@@ -574,7 +574,7 @@
         - wifi_path == 'expected_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Mark WiFi status when using native non-RTL adapter
+    - name: 50/243 Mark WiFi status when using native non-RTL adapter
       set_fact:
         rtl8812au_install_status: "native_adapter_ok"
       when:
@@ -582,7 +582,7 @@
         - wifi_path == 'other_adapter'
         - wifi_native_working | bool
 
-    - name: Mark WiFi status when no adapter is acceptable in test mode
+    - name: 51/243 Mark WiFi status when no adapter is acceptable in test mode
       set_fact:
         rtl8812au_install_status: "no_adapter_allowed_test"
       when:
@@ -590,7 +590,7 @@
         - deployment_mode == 'test'
         - wifi_path == 'no_adapter'
 
-    - name: Mark WiFi status when non-native adapter is not working (test mode)
+    - name: 52/243 Mark WiFi status when non-native adapter is not working (test mode)
       set_fact:
         rtl8812au_install_status: "other_adapter_not_working_test"
       when:
@@ -599,19 +599,19 @@
         - wifi_path == 'other_adapter'
         - not (wifi_native_working | bool)
 
-    - name: Mark WiFi status when operator skipped WiFi handling
+    - name: 53/243 Mark WiFi status when operator skipped WiFi handling
       set_fact:
         rtl8812au_install_status: "skipped_by_operator"
       when: wifi_operator_decision == '2'
 
-    - name: Report WiFi readiness outcome
+    - name: 54/243 Report WiFi readiness outcome
       debug:
         msg: "WiFi readiness outcome: {{ rtl8812au_install_status }}"
 
     # ==========================================================
     # 5. CREATE LOCAL INSTALLER STORAGE
     # ==========================================================
-    - name: Create local installer base directory
+    - name: 55/243 Create local installer base directory
       file:
         path: "{{ installers_base_path }}"
         state: directory
@@ -619,25 +619,25 @@
         owner: root
         group: root
 
-    - name: Create nvidia-driver installer directory
+    - name: 56/243 Create nvidia-driver installer directory
       file:
         path: "{{ installers_base_path }}/nvidia-driver"
         state: directory
         mode: '0755'
 
-    - name: Create cuda installer directory
+    - name: 57/243 Create cuda installer directory
       file:
         path: "{{ installers_base_path }}/cuda"
         state: directory
         mode: '0755'
 
-    - name: Create tensorrt installer directory
+    - name: 58/243 Create tensorrt installer directory
       file:
         path: "{{ installers_base_path }}/tensorrt"
         state: directory
         mode: '0755'
 
-    - name: Log local installer storage creation
+    - name: 59/243 Log local installer storage creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "5. LOCAL INSTALLER STORAGE - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
@@ -645,7 +645,7 @@
         echo "Created {{ installers_base_path }} for reproducible builds" >> {{ log_file }}
         echo "" >> {{ log_file }}
 
-    - name: Create version manifest
+    - name: 60/243 Create version manifest
       copy:
         dest: "{{ installers_base_path }}/VERSIONS.json"
         mode: '0644'
@@ -686,7 +686,7 @@
     - debug:
         msg: "📋 Version manifest created at {{ installers_base_path }}/VERSIONS.json"
 
-    - name: Create SHA-256 checksums placeholder file
+    - name: 61/243 Create SHA-256 checksums placeholder file
       copy:
         dest: "{{ installers_base_path }}/SHA256SUMS"
         mode: '0644'
@@ -701,14 +701,14 @@
     # ==========================================================
     # 6. SYSTEM UPDATE
     # ==========================================================
-    - name: Update apt cache and upgrade packages
+    - name: 62/243 Update apt cache and upgrade packages
       apt:
         update_cache: yes
         cache_valid_time: 3600
         upgrade: dist
       register: apt_upgrade
     
-    - name: Log system update
+    - name: 63/243 Log system update
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "6. SYSTEM UPDATE - $(date)" >> {{ log_file }}
@@ -721,7 +721,7 @@
     # ==========================================================
     # 7. COMMON UTILITIES & MONITORING TOOLS
     # ==========================================================
-    - name: Install general developer and monitoring tools
+    - name: 64/243 Install general developer and monitoring tools
       apt:
         name:
           - build-essential
@@ -749,14 +749,14 @@
         state: present
       register: tools_install
     
-    - name: Print versions of installed core tools
+    - name: 65/243 Print versions of installed core tools
       shell: |
         echo "htop: $(htop --version | head -n1)"
         echo "git: $(git --version)"
         echo "cmake: $(cmake --version | head -n1)"
       register: base_versions
     
-    - name: Log tools installation
+    - name: 66/243 Log tools installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "7. COMMON UTILITIES & MONITORING TOOLS - $(date)" >> {{ log_file }}
@@ -766,17 +766,17 @@
     
     - debug: msg="{{ base_versions.stdout_lines }}"
 
-    - name: Install xdotool and x11-xserver-utils for minimal X / king_detector
+    - name: 67/243 Install xdotool and x11-xserver-utils for minimal X / king_detector
       apt: { name: [xdotool, x11-xserver-utils], state: present }
       when: boot_mode == 'minimal_x'
 
     # ==========================================================
     # 3. SSH CONFIGURATION
     # ==========================================================
-    - name: Install and configure OpenSSH server
+    - name: 68/243 Install and configure OpenSSH server
       apt: { name: openssh-server, state: present }
 
-    - name: Ensure .ssh directory exists for user
+    - name: 69/243 Ensure .ssh directory exists for user
       file:
         path: "{{ user_home }}/.ssh"
         state: directory
@@ -784,20 +784,20 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Check if ssh-public-keys.txt exists in repo
+    - name: 70/243 Check if ssh-public-keys.txt exists in repo
       stat:
         path: "{{ playbook_dir }}/ssh-public-keys.txt"
       register: ssh_keys_file
       delegate_to: localhost
       run_once: true
 
-    - name: Read SSH keys from file
+    - name: 71/243 Read SSH keys from file
       slurp:
         src: "{{ playbook_dir }}/ssh-public-keys.txt"
       register: ssh_keys_content
       when: ssh_keys_file.stat.exists | default(false)
 
-    - name: Deploy SSH keys from ssh-public-keys.txt to authorized_keys
+    - name: 72/243 Deploy SSH keys from ssh-public-keys.txt to authorized_keys
       authorized_key:
         user: "{{ ssh_user }}"
         key: "{{ item }}"
@@ -807,39 +807,39 @@
         - ssh_keys_content.content is defined
         - item | length > 0
 
-    - name: Set SSH Port in sshd_config (single place)
+    - name: 73/243 Set SSH Port in sshd_config (single place)
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*Port\s+'
         line: "Port {{ ssh_port }}"
       notify: restart sshd
 
-    - name: Set PasswordAuthentication no in sshd_config
+    - name: 74/243 Set PasswordAuthentication no in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PasswordAuthentication\s+'
         line: "PasswordAuthentication no"
       notify: restart sshd
 
-    - name: Set PubkeyAuthentication yes in sshd_config
+    - name: 75/243 Set PubkeyAuthentication yes in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PubkeyAuthentication\s+'
         line: "PubkeyAuthentication yes"
       notify: restart sshd
 
-    - name: Set PermitRootLogin no in sshd_config
+    - name: 76/243 Set PermitRootLogin no in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PermitRootLogin\s+'
         line: "PermitRootLogin no"
       notify: restart sshd
 
-    - name: Validate sshd_config
+    - name: 77/243 Validate sshd_config
       command: /usr/sbin/sshd -t -f /etc/ssh/sshd_config
       changed_when: false
 
-    - name: Log SSH configuration
+    - name: 78/243 Log SSH configuration
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "3. SSH CONFIGURATION - $(date)" >> {{ log_file }}
@@ -852,16 +852,16 @@
     # ==========================================================
     # 4. FIREWALL
     # ==========================================================
-    - name: Install and enable UFW
+    - name: 79/243 Install and enable UFW
       apt: { name: ufw, state: present }
-    - name: Allow SSH through UFW
+    - name: 80/243 Allow SSH through UFW
       ufw: { rule: allow, port: "{{ ssh_port }}", proto: tcp }
-    - name: Enable UFW non-interactively
+    - name: 81/243 Enable UFW non-interactively
       command: ufw --force enable
       args: { creates: /etc/ufw/ufw.conf }
       register: ufw_enable
     
-    - name: Log firewall configuration
+    - name: 82/243 Log firewall configuration
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "4. FIREWALL - $(date)" >> {{ log_file }}
@@ -874,7 +874,7 @@
     # ==========================================================
     # 5b. DATA FOLDERS (videos and jpgs for app)
     # ==========================================================
-    - name: Ensure app data base path exists
+    - name: 83/243 Ensure app data base path exists
       file:
         path: "{{ app_data_path }}"
         state: directory
@@ -882,7 +882,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Create app data directory structure
+    - name: 84/243 Create app data directory structure
       file:
         path: "{{ item }}"
         state: directory
@@ -896,7 +896,7 @@
         - "{{ app_data_path }}/data/jpg/no_hook"
         - "{{ app_data_path }}/data/jpg/no_overlay"
 
-    - name: Log data folders creation
+    - name: 85/243 Log data folders creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "5b. DATA FOLDERS - $(date)" >> {{ log_file }}
@@ -907,7 +907,7 @@
     # ==========================================================
     # 5c. SCHEDULED REBOOT (root cron at 6 and 18)
     # ==========================================================
-    - name: Install root cron for scheduled reboot at 6 and 18
+    - name: 86/243 Install root cron for scheduled reboot at 6 and 18
       cron:
         name: "Scheduled reboot at 6 and 18"
         user: root
@@ -915,7 +915,7 @@
         hour: "6,18"
         job: /sbin/reboot
 
-    - name: Install root cron to log cron execution (6 and 18)
+    - name: 87/243 Install root cron to log cron execution (6 and 18)
       cron:
         name: "Cron test log at 6 and 18"
         user: root
@@ -923,7 +923,7 @@
         hour: "6,18"
         job: 'echo "Cron executed at $(date)" >> /var/log/cron_test.log'
 
-    - name: Log scheduled reboot cron
+    - name: 88/243 Log scheduled reboot cron
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "5c. SCHEDULED REBOOT (CRON) - $(date)" >> {{ log_file }}
@@ -934,36 +934,36 @@
     # ==========================================================
     # 6. TAILSCALE
     # ==========================================================
-    - name: Setup Tailscale repository and install
+    - name: 89/243 Setup Tailscale repository and install
       block:
-        - name: Create keyrings directory for Tailscale
+        - name: 90/243 Create keyrings directory for Tailscale
           file:
             path: /usr/share/keyrings
             state: directory
             mode: '0755'
 
-        - name: Download Tailscale GPG key
+        - name: 91/243 Download Tailscale GPG key
           get_url:
             url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
             dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
             mode: '0644'
 
-        - name: Download Tailscale repository list
+        - name: 92/243 Download Tailscale repository list
           get_url:
             url: https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list
             dest: /etc/apt/sources.list.d/tailscale.list
             mode: '0644'
 
-        - name: Update apt cache for Tailscale
+        - name: 93/243 Update apt cache for Tailscale
           apt:
             update_cache: yes
 
-        - name: Install Tailscale
+        - name: 94/243 Install Tailscale
           apt:
             name: tailscale
             state: present
 
-        - name: Enable and start tailscaled service
+        - name: 95/243 Enable and start tailscaled service
           systemd:
             name: tailscaled
             enabled: yes
@@ -974,7 +974,7 @@
         - debug: msg="⚠️ Tailscale repo or install failed."
         - shell: echo "⚠️ Tailscale repo or install failed." >> {{ log_file }}
     
-    - name: Log Tailscale installation
+    - name: 96/243 Log Tailscale installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "6. TAILSCALE - $(date)" >> {{ log_file }}
@@ -985,7 +985,7 @@
     # ==========================================================
     # 7. REALVNC SERVER
     # ==========================================================
-    - name: Install RealVNC
+    - name: 97/243 Install RealVNC
       block:
         - get_url:
             url: "https://downloads.realvnc.com/download/file/vnc.files/VNC-Server-{{ realvnc_version }}-Linux-x64.deb"
@@ -998,7 +998,7 @@
         - debug: msg="⚠️ RealVNC download failed."
         - shell: echo "⚠️ RealVNC download failed." >> {{ log_file }}
     
-    - name: Log RealVNC installation
+    - name: 98/243 Log RealVNC installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "7. REALVNC SERVER - $(date)" >> {{ log_file }}
@@ -1008,33 +1008,33 @@
     # ==========================================================
     # 8. VISUAL STUDIO CODE
     # ==========================================================
-    - name: Install Visual Studio Code
+    - name: 99/243 Install Visual Studio Code
       block:
-        - name: Create keyrings directory for VS Code
+        - name: 100/243 Create keyrings directory for VS Code
           file:
             path: /usr/share/keyrings
             state: directory
             mode: '0755'
 
-        - name: Download Microsoft GPG key
+        - name: 101/243 Download Microsoft GPG key
           get_url:
             url: https://packages.microsoft.com/keys/microsoft.asc
             dest: /tmp/microsoft.asc
             mode: '0644'
 
-        - name: Install Microsoft GPG key
+        - name: 102/243 Install Microsoft GPG key
           shell: gpg --dearmor < /tmp/microsoft.asc > /usr/share/keyrings/microsoft.gpg
           args:
             creates: /usr/share/keyrings/microsoft.gpg
 
-        - name: Add VS Code repository
+        - name: 103/243 Add VS Code repository
           apt_repository:
             repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/vscode stable main"
             state: present
             filename: vscode
             update_cache: yes
 
-        - name: Install VS Code package
+        - name: 104/243 Install VS Code package
           apt:
             name: code
             state: present
@@ -1045,7 +1045,7 @@
         - debug: msg="⚠️ VS Code repo or install failed."
         - shell: echo "⚠️ VS Code repo or install failed." >> {{ log_file }}
     
-    - name: Log VS Code installation
+    - name: 105/243 Log VS Code installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "8. VISUAL STUDIO CODE - $(date)" >> {{ log_file }}
@@ -1055,28 +1055,28 @@
     # ==========================================================
     # 9. DISPLAY SERVER (XORG) & VM DETECTION
     # ==========================================================
-    - name: Detect if running in a virtual machine
+    - name: 106/243 Detect if running in a virtual machine
       shell: systemd-detect-virt
       register: virt_detect
       failed_when: false
       changed_when: false
 
-    - name: Set VM detection fact
+    - name: 107/243 Set VM detection fact
       set_fact:
         is_virtual_machine: "{{ virt_detect.rc == 0 and virt_detect.stdout != 'none' }}"
         virtualization_type: "{{ virt_detect.stdout | default('none') }}"
 
-    - name: Check if GDM3 is installed
+    - name: 108/243 Check if GDM3 is installed
       stat:
         path: /etc/gdm3/custom.conf
       register: gdm3_config
 
-    - name: Check if LightDM is installed
+    - name: 109/243 Check if LightDM is installed
       stat:
         path: /etc/lightdm/lightdm.conf
       register: lightdm_config
 
-    - name: Disable Wayland and force Xorg (GDM3)
+    - name: 110/243 Disable Wayland and force Xorg (GDM3)
       lineinfile:
         path: /etc/gdm3/custom.conf
         regexp: '^#?WaylandEnable='
@@ -1087,7 +1087,7 @@
       register: xorg_config_gdm3
       when: gdm3_config.stat.exists
 
-    - name: Configure LightDM to use Xorg (if present)
+    - name: 111/243 Configure LightDM to use Xorg (if present)
       lineinfile:
         path: /etc/lightdm/lightdm.conf
         regexp: '^#?user-session='
@@ -1098,7 +1098,7 @@
       register: xorg_config_lightdm
       when: lightdm_config.stat.exists
 
-    - name: Log display manager configuration
+    - name: 112/243 Log display manager configuration
       shell: |
         {% if gdm3_config.stat.exists %}
         echo "✅ GDM3 configured to use Xorg (Wayland disabled)" >> {{ log_file }}
@@ -1108,15 +1108,15 @@
         echo "ℹ️ No display manager (GDM3/LightDM) detected - skipping Wayland/Xorg configuration" >> {{ log_file }}
         {% endif %}
 
-    - name: Apply VM-specific display fix (QXL)
+    - name: 113/243 Apply VM-specific display fix (QXL)
       block:
-        - name: Create X11 config directory
+        - name: 114/243 Create X11 config directory
           file:
             path: /etc/X11/xorg.conf.d
             state: directory
             mode: '0755'
 
-        - name: Configure QXL display for VMs
+        - name: 115/243 Configure QXL display for VMs
           copy:
             dest: /etc/X11/xorg.conf.d/10-qxl-display.conf
             mode: '0644'
@@ -1144,7 +1144,7 @@
             - restart gdm3
             - restart lightdm
 
-        - name: Remove conflicting NVIDIA X11 config
+        - name: 116/243 Remove conflicting NVIDIA X11 config
           file:
             path: /etc/X11/xorg.conf.d/10-nvidia.conf
             state: absent
@@ -1160,7 +1160,7 @@
 
       when: is_virtual_machine
 
-    - name: Log display server configuration
+    - name: 117/243 Log display server configuration
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "9. DISPLAY SERVER (XORG) & VM DETECTION - $(date)" >> {{ log_file }}
@@ -1177,9 +1177,9 @@
     # ==========================================================
     # 10. NVIDIA DRIVER & GRUB CONFIG (LOCAL REPO)
     # ==========================================================
-    - name: Install NVIDIA driver from local repository
+    - name: 118/243 Install NVIDIA driver from local repository
       block:
-        - name: Download NVIDIA driver local repository package
+        - name: 119/243 Download NVIDIA driver local repository package
           get_url:
             url: "{{ nvidia_driver_local_repo_url }}"
             dest: "{{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb"
@@ -1187,13 +1187,13 @@
             timeout: 300
           register: nvidia_driver_download
 
-        - name: Calculate SHA-256 checksum of NVIDIA driver package
+        - name: 120/243 Calculate SHA-256 checksum of NVIDIA driver package
           shell: sha256sum {{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb | awk '{print $1}'
           register: nvidia_driver_sha256
           changed_when: false
           when: nvidia_driver_download.changed
 
-        - name: Log NVIDIA driver SHA-256 checksum
+        - name: 121/243 Log NVIDIA driver SHA-256 checksum
           shell: |
             echo "NVIDIA Driver SHA-256: {{ nvidia_driver_sha256.stdout }}" >> {{ log_file }}
             echo "  File: nvidia-driver-local-repo.deb" >> {{ log_file }}
@@ -1201,34 +1201,34 @@
             echo "{{ nvidia_driver_sha256.stdout }}  nvidia-driver/nvidia-driver-local-repo.deb" >> {{ installers_base_path }}/SHA256SUMS
           when: nvidia_driver_download.changed
 
-        - name: Install NVIDIA driver local repository package
+        - name: 122/243 Install NVIDIA driver local repository package
           apt:
             deb: "{{ installers_base_path }}/nvidia-driver/nvidia-driver-local-repo.deb"
             state: present
 
-        - name: Find NVIDIA driver repository directory
+        - name: 123/243 Find NVIDIA driver repository directory
           shell: find /var -maxdepth 1 -type d -name 'nvidia-driver-local-repo-*' | head -n 1
           register: nvidia_repo_dir
           changed_when: false
 
-        - name: Copy NVIDIA driver GPG key to keyrings
+        - name: 124/243 Copy NVIDIA driver GPG key to keyrings
           shell: cp {{ nvidia_repo_dir.stdout }}/nvidia-*-keyring.gpg /usr/share/keyrings/
           args:
             creates: /usr/share/keyrings/nvidia-*-keyring.gpg
           when: nvidia_repo_dir.stdout != ""
 
-        - name: Update apt cache with NVIDIA driver repository
+        - name: 125/243 Update apt cache with NVIDIA driver repository
           apt:
             update_cache: yes
 
-        - name: Install NVIDIA driver meta-package
+        - name: 126/243 Install NVIDIA driver meta-package
           apt:
             name: "nvidia-driver-{{ nvidia_driver_version }}"
             state: present
             update_cache: yes
           register: nvidia_driver_install
 
-        - name: Configure GRUB for NVIDIA KMS
+        - name: 127/243 Configure GRUB for NVIDIA KMS
           lineinfile:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
@@ -1236,11 +1236,11 @@
             backup: yes
           register: grub_updated
 
-        - name: Update GRUB configuration
+        - name: 128/243 Update GRUB configuration
           command: update-grub
           when: grub_updated.changed
 
-        - name: Configure NVIDIA modprobe options
+        - name: 129/243 Configure NVIDIA modprobe options
           copy:
             dest: /etc/modprobe.d/nvidia.conf
             mode: '0644'
@@ -1250,7 +1250,7 @@
 
         - shell: echo "✅ NVIDIA driver {{ nvidia_driver_version_full }} installed from local repository." >> {{ log_file }}
 
-    - name: Log NVIDIA driver installation
+    - name: 130/243 Log NVIDIA driver installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "10. NVIDIA DRIVER & GRUB CONFIG - $(date)" >> {{ log_file }}
@@ -1262,26 +1262,26 @@
     - debug: msg="✅ NVIDIA driver {{ nvidia_driver_version_full }} installed from local repository."
 
     # Hold NVIDIA driver packages to prevent upgrades
-    - name: Get list of installed NVIDIA driver packages
+    - name: 131/243 Get list of installed NVIDIA driver packages
       shell: dpkg -l | grep '^ii' | grep -E 'nvidia.*-{{ nvidia_driver_version }}' | awk '{print $2}'
       register: nvidia_packages_list
       changed_when: false
       failed_when: false
 
-    - name: Hold NVIDIA driver packages
+    - name: 132/243 Hold NVIDIA driver packages
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
       loop: "{{ nvidia_packages_list.stdout_lines }}"
       when: nvidia_packages_list.stdout_lines | length > 0
 
-    - name: Verify NVIDIA driver packages are held
+    - name: 133/243 Verify NVIDIA driver packages are held
       shell: dpkg --get-selections | grep -E 'nvidia.*-{{ nvidia_driver_version }}' | grep hold
       register: nvidia_held_packages
       changed_when: false
       failed_when: nvidia_held_packages.rc != 0
 
-    - name: Log NVIDIA driver version locking
+    - name: 134/243 Log NVIDIA driver version locking
       shell: |
         echo "🔒 Version Locking: {{ nvidia_held_packages.stdout_lines | length }} NVIDIA driver packages held" >> {{ log_file }}
         echo "Packages will NOT upgrade with 'apt upgrade'" >> {{ log_file }}
@@ -1293,9 +1293,9 @@
     # ==========================================================
     # 11. CUDA TOOLKIT (LOCAL REPO)
     # ==========================================================
-    - name: Install CUDA Toolkit from local repository
+    - name: 135/243 Install CUDA Toolkit from local repository
       block:
-        - name: Download CUDA local repository package
+        - name: 136/243 Download CUDA local repository package
           get_url:
             url: "{{ cuda_local_repo_url }}"
             dest: "{{ installers_base_path }}/cuda/cuda-repo-local.deb"
@@ -1303,13 +1303,13 @@
             timeout: 600
           register: cuda_download
 
-        - name: Calculate SHA-256 checksum of CUDA package
+        - name: 137/243 Calculate SHA-256 checksum of CUDA package
           shell: sha256sum {{ installers_base_path }}/cuda/cuda-repo-local.deb | awk '{print $1}'
           register: cuda_sha256
           changed_when: false
           when: cuda_download.changed
 
-        - name: Log CUDA SHA-256 checksum
+        - name: 138/243 Log CUDA SHA-256 checksum
           shell: |
             echo "CUDA Toolkit SHA-256: {{ cuda_sha256.stdout }}" >> {{ log_file }}
             echo "  File: cuda-repo-local.deb" >> {{ log_file }}
@@ -1317,33 +1317,33 @@
             echo "{{ cuda_sha256.stdout }}  cuda/cuda-repo-local.deb" >> {{ installers_base_path }}/SHA256SUMS
           when: cuda_download.changed
 
-        - name: Install CUDA local repository package
+        - name: 139/243 Install CUDA local repository package
           apt:
             deb: "{{ installers_base_path }}/cuda/cuda-repo-local.deb"
             state: present
 
-        - name: Find CUDA repository directory
+        - name: 140/243 Find CUDA repository directory
           shell: find /var -maxdepth 1 -type d -name 'cuda-repo-ubuntu2404-*-local' | head -n 1
           register: cuda_repo_dir
           changed_when: false
 
-        - name: Copy CUDA GPG key to keyrings
+        - name: 141/243 Copy CUDA GPG key to keyrings
           shell: cp {{ cuda_repo_dir.stdout }}/cuda-*-keyring.gpg /usr/share/keyrings/
           args:
             creates: /usr/share/keyrings/cuda-*-keyring.gpg
           when: cuda_repo_dir.stdout != ""
 
-        - name: Update apt cache with CUDA repository
+        - name: 142/243 Update apt cache with CUDA repository
           apt:
             update_cache: yes
 
-        - name: Install CUDA toolkit package
+        - name: 143/243 Install CUDA toolkit package
           apt:
             name: "cuda-toolkit-{{ cuda_version }}"
             state: present
             update_cache: yes
 
-        - name: Configure CUDA environment in /etc/profile.d/
+        - name: 144/243 Configure CUDA environment in /etc/profile.d/
           copy:
             dest: /etc/profile.d/cuda.sh
             mode: '0644'
@@ -1351,7 +1351,7 @@
               export PATH=/usr/local/cuda-{{ cuda_version_full }}/bin:$PATH
               export LD_LIBRARY_PATH=/usr/local/cuda-{{ cuda_version_full }}/lib64:$LD_LIBRARY_PATH
 
-        - name: Configure CUDA library path for ldconfig
+        - name: 145/243 Configure CUDA library path for ldconfig
           copy:
             dest: /etc/ld.so.conf.d/cuda.conf
             mode: '0644'
@@ -1365,7 +1365,7 @@
         - debug: msg="⚠️ CUDA installation failed."
         - shell: echo "⚠️ CUDA installation failed." >> {{ log_file }}
 
-    - name: Log CUDA installation
+    - name: 146/243 Log CUDA installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "11. CUDA TOOLKIT - $(date)" >> {{ log_file }}
@@ -1375,39 +1375,39 @@
         echo "" >> {{ log_file }}
 
     # Hold CUDA packages to prevent upgrades
-    - name: Get list of installed CUDA 13-0 packages
+    - name: 147/243 Get list of installed CUDA 13-0 packages
       shell: dpkg -l | grep -E '^ii' | awk '{print $2}' | grep 'cuda.*-13-0$'
       register: installed_cuda_packages
       changed_when: false
       failed_when: false
 
-    - name: Hold installed CUDA packages to prevent upgrades
+    - name: 148/243 Hold installed CUDA packages to prevent upgrades
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
       loop: "{{ installed_cuda_packages.stdout_lines }}"
       when: installed_cuda_packages.stdout_lines | length > 0
 
-    - name: Get list of all installed CUDA packages for holding
+    - name: 149/243 Get list of all installed CUDA packages for holding
       shell: dpkg -l | grep '^ii' | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | awk '{print $2}'
       register: additional_cuda_packages
       changed_when: false
       failed_when: false
 
-    - name: Hold additional CUDA packages
+    - name: 150/243 Hold additional CUDA packages
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
       loop: "{{ additional_cuda_packages.stdout_lines }}"
       when: additional_cuda_packages.stdout_lines | length > 0
 
-    - name: Verify CUDA packages are held
+    - name: 151/243 Verify CUDA packages are held
       shell: dpkg --get-selections | grep -E 'cuda-|libcu' | grep '{{ cuda_version }}' | grep hold
       register: cuda_held_packages
       changed_when: false
       failed_when: false
 
-    - name: Log CUDA version locking
+    - name: 152/243 Log CUDA version locking
       shell: |
         echo "🔒 Version Locking: {{ cuda_held_packages.stdout_lines | length }} CUDA packages held" >> {{ log_file }}
         echo "Packages will NOT upgrade with 'apt upgrade'" >> {{ log_file }}
@@ -1419,28 +1419,28 @@
     # ==========================================================
     # 12. TENSORRT
     # ==========================================================
-    - name: Install TensorRT with version pinning
+    - name: 153/243 Install TensorRT with version pinning
       block:
         # Detect Ubuntu version and architecture
-        - name: Get Ubuntu codename
+        - name: 154/243 Get Ubuntu codename
           shell: . /etc/os-release && echo "$VERSION_CODENAME"
           register: ubuntu_codename
           changed_when: false
 
-        - name: Get system architecture
+        - name: 155/243 Get system architecture
           command: dpkg --print-architecture
           register: system_arch
           changed_when: false
 
-        - name: Construct TensorRT local repo URL automatically
+        - name: 156/243 Construct TensorRT local repo URL automatically
           set_fact:
             tensorrt_auto_url: "https://developer.download.nvidia.com/compute/tensorrt/{{ tensorrt_version_full }}/local_installers/nv-tensorrt-local-repo-ubuntu{{ ansible_distribution_version | replace('.', '') }}-{{ tensorrt_version_full }}-cuda-{{ cuda_version_full }}_1.0-1_{{ system_arch.stdout }}.deb"
 
-        - name: Set final TensorRT URL
+        - name: 157/243 Set final TensorRT URL
           set_fact:
             tensorrt_final_url: "{{ tensorrt_local_repo_url if tensorrt_local_repo_url != '' else tensorrt_auto_url }}"
 
-        - name: Display TensorRT installation plan
+        - name: 158/243 Display TensorRT installation plan
           debug:
             msg: |
               TensorRT Installation Configuration:
@@ -1454,10 +1454,10 @@
               {% endif %}
 
         # Method 1: Local Repository
-        - name: Install TensorRT from local repository
+        - name: 159/243 Install TensorRT from local repository
           when: tensorrt_install_method == 'local' or tensorrt_install_method == 'auto'
           block:
-            - name: Download TensorRT local repo package
+            - name: 160/243 Download TensorRT local repo package
               get_url:
                 url: "{{ tensorrt_final_url }}"
                 dest: /tmp/tensorrt-local-repo.deb
@@ -1465,23 +1465,23 @@
               register: tensorrt_download
               failed_when: false
 
-            - name: Install TensorRT local repo package
+            - name: 161/243 Install TensorRT local repo package
               apt:
                 deb: /tmp/tensorrt-local-repo.deb
               when: tensorrt_download is succeeded
 
-            - name: Copy TensorRT repo keyring
+            - name: 162/243 Copy TensorRT repo keyring
               shell: cp /var/nv-tensorrt-local-repo-*/tensorrt-*-keyring.gpg /usr/share/keyrings/ 2>/dev/null || cp /var/nv-tensorrt-local-repo-*/*-keyring.gpg /usr/share/keyrings/
               when: tensorrt_download is succeeded
               register: keyring_copy
               failed_when: false
 
-            - name: Update apt cache for TensorRT local repo
+            - name: 163/243 Update apt cache for TensorRT local repo
               apt:
                 update_cache: yes
               when: tensorrt_download is succeeded
 
-            - name: Install TensorRT from local repo
+            - name: 164/243 Install TensorRT from local repo
               apt:
                 name:
                   - tensorrt-dev
@@ -1493,20 +1493,20 @@
               register: trt_local_install
 
         # Method 2: Network Repository (when local fails or method is "network")
-        - name: Install TensorRT from network repository
+        - name: 165/243 Install TensorRT from network repository
           when: (tensorrt_install_method == 'network') or (tensorrt_install_method == 'auto' and (tensorrt_download is failed or trt_local_install is failed))
           block:
-            - name: Update apt cache for TensorRT
+            - name: 166/243 Update apt cache for TensorRT
               apt:
                 update_cache: yes
 
-            - name: Check available TensorRT versions in network repo
+            - name: 167/243 Check available TensorRT versions in network repo
               shell: apt-cache madison tensorrt-dev | grep "{{ tensorrt_version_pattern }}" | head -1 | awk '{print $3}'
               register: available_trt_version
               failed_when: false
               changed_when: false
 
-            - name: Fail if requested TensorRT version not available
+            - name: 168/243 Fail if requested TensorRT version not available
               fail:
                 msg: |
                   TensorRT {{ tensorrt_version_pattern }} not found in network repository!
@@ -1520,11 +1520,11 @@
                   Or download manually from: https://developer.nvidia.com/tensorrt
               when: available_trt_version.stdout == ''
 
-            - name: Set TensorRT package version from network repo
+            - name: 169/243 Set TensorRT package version from network repo
               set_fact:
                 trt_pkg_version: "{{ available_trt_version.stdout }}"
 
-            - name: Install TensorRT packages with specific version from network repo
+            - name: 170/243 Install TensorRT packages with specific version from network repo
               apt:
                 name:
                   - "tensorrt-dev={{ trt_pkg_version }}"
@@ -1540,7 +1540,7 @@
                 allow_downgrades: yes
               register: trt_install
 
-        - name: Hold TensorRT packages to prevent upgrades
+        - name: 171/243 Hold TensorRT packages to prevent upgrades
           dpkg_selections:
             name: "{{ item }}"
             selection: hold
@@ -1555,13 +1555,13 @@
             - python3-libnvinfer
             - python3-libnvinfer-dev
 
-        - name: Verify packages are held
+        - name: 172/243 Verify packages are held
           shell: dpkg --get-selections | grep -E "(tensorrt|libnvinfer)" | grep hold
           register: held_packages
           changed_when: false
           failed_when: held_packages.rc != 0
 
-        - name: Verify installed TensorRT version
+        - name: 173/243 Verify installed TensorRT version
           shell: dpkg -l | grep -E "(tensorrt|libnvinfer)" | grep -v "^rc"
           register: trt_ver
           changed_when: false
@@ -1572,7 +1572,7 @@
             echo "Packages held (will NOT be upgraded by apt):" >> {{ log_file }}
             echo "{{ held_packages.stdout }}" >> {{ log_file }}
 
-        - name: Determine which method was used
+        - name: 174/243 Determine which method was used
           set_fact:
             trt_method_used: "{{ 'Local Repository' if (tensorrt_download is defined and tensorrt_download is succeeded) else 'Network Repository' }}"
 
@@ -1587,7 +1587,7 @@
               Held packages (protected from apt upgrade):
               {{ held_packages.stdout_lines }}
 
-    - name: Log TensorRT installation
+    - name: 175/243 Log TensorRT installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "12. TENSORRT - $(date)" >> {{ log_file }}
@@ -1597,7 +1597,7 @@
     # ==========================================================
     # 13. UNATTENDED-UPGRADES PROTECTION
     # ==========================================================
-    - name: Create unattended-upgrades GPU stack blacklist
+    - name: 176/243 Create unattended-upgrades GPU stack blacklist
       copy:
         dest: /etc/apt/apt.conf.d/51nvidia-blacklist
         mode: '0644'
@@ -1617,7 +1617,7 @@
               "libnvonnxparsers*";
           };
 
-    - name: Log unattended-upgrades protection
+    - name: 177/243 Log unattended-upgrades protection
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "13. UNATTENDED-UPGRADES PROTECTION - $(date)" >> {{ log_file }}
@@ -1632,7 +1632,7 @@
     # ==========================================================
     # 14. APT PREFERENCES (PIN-PRIORITY 1001)
     # ==========================================================
-    - name: Create APT preferences for GPU stack pinning
+    - name: 178/243 Create APT preferences for GPU stack pinning
       copy:
         dest: /etc/apt/preferences.d/99-gpu-stack-pinning
         mode: '0644'
@@ -1677,7 +1677,7 @@
           Pin: version *
           Pin-Priority: -1
 
-    - name: Log APT preferences creation
+    - name: 179/243 Log APT preferences creation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "14. APT PREFERENCES PINNING - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
@@ -1693,7 +1693,7 @@
     # ==========================================================
     # 15. REPOSITORY CLEANUP
     # ==========================================================
-    - name: Clean up old local repositories
+    - name: 180/243 Clean up old local repositories
       shell: |
         # Keep only the most recent TensorRT local repo
         find /var -maxdepth 1 -mindepth 1 -type d -name 'nv-tensorrt-local-repo-*' 2>/dev/null | sort -r | tail -n +2 | xargs -r rm -rf 2>/dev/null || true
@@ -1704,7 +1704,7 @@
       failed_when: false
       changed_when: false
 
-    - name: Log repository cleanup
+    - name: 181/243 Log repository cleanup
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "15. REPOSITORY CLEANUP - {{ ansible_date_time.iso8601 }}" >> {{ log_file }}
@@ -1718,9 +1718,9 @@
     # ==========================================================
     # 15. DOCKER + NVIDIA RUNTIME
     # ==========================================================
-    - name: Install Docker and NVIDIA container runtime
+    - name: 182/243 Install Docker and NVIDIA container runtime
       block:
-        - name: Install Docker prerequisites
+        - name: 183/243 Install Docker prerequisites
           apt:
             name:
               - apt-transport-https
@@ -1730,23 +1730,23 @@
               - lsb-release
             state: present
 
-        - name: Create keyrings directory
+        - name: 184/243 Create keyrings directory
           file:
             path: /etc/apt/keyrings
             state: directory
             mode: '0755'
 
-        - name: Download Docker GPG key directly to keyrings
+        - name: 185/243 Download Docker GPG key directly to keyrings
           shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
           args:
             creates: /etc/apt/keyrings/docker.asc
 
-        - name: Set permissions on Docker GPG key
+        - name: 186/243 Set permissions on Docker GPG key
           file:
             path: /etc/apt/keyrings/docker.asc
             mode: '0644'
 
-        - name: Add Docker repository with dynamic architecture and codename
+        - name: 187/243 Add Docker repository with dynamic architecture and codename
           shell: |
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
             $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
@@ -1754,11 +1754,11 @@
           args:
             creates: /etc/apt/sources.list.d/docker.list
 
-        - name: Update apt cache for Docker
+        - name: 188/243 Update apt cache for Docker
           apt:
             update_cache: yes
 
-        - name: Install Docker packages
+        - name: 189/243 Install Docker packages
           apt:
             name:
               - docker-ce
@@ -1768,26 +1768,26 @@
               - docker-compose-plugin
             state: present
 
-        - name: Add user to docker group
+        - name: 190/243 Add user to docker group
           user:
             name: "{{ ssh_user }}"
             groups: docker
             append: yes
 
-        - name: Create keyrings directory for NVIDIA Container Toolkit
+        - name: 191/243 Create keyrings directory for NVIDIA Container Toolkit
           file:
             path: /usr/share/keyrings
             state: directory
             mode: '0755'
 
-        - name: Download and install NVIDIA Container Toolkit GPG key
+        - name: 192/243 Download and install NVIDIA Container Toolkit GPG key
           shell: |
             curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
             gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
           args:
             creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
-        - name: Add NVIDIA Container Toolkit repository
+        - name: 193/243 Add NVIDIA Container Toolkit repository
           shell: |
             curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
             sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
@@ -1795,22 +1795,22 @@
           args:
             creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-        - name: Update apt cache for NVIDIA Container Toolkit
+        - name: 194/243 Update apt cache for NVIDIA Container Toolkit
           apt:
             update_cache: yes
 
-        - name: Install NVIDIA Container Toolkit
+        - name: 195/243 Install NVIDIA Container Toolkit
           apt:
             name: nvidia-container-toolkit
             state: present
 
-        - name: Configure Docker runtime using nvidia-ctk
+        - name: 196/243 Configure Docker runtime using nvidia-ctk
           command: nvidia-ctk runtime configure --runtime=docker
           register: nvidia_ctk_config
           changed_when: nvidia_ctk_config.rc == 0
           notify: restart docker
 
-        - name: Start and enable Docker service
+        - name: 197/243 Start and enable Docker service
           systemd:
             name: docker
             state: started
@@ -1822,7 +1822,7 @@
         - debug: msg="⚠️ Docker installation failed."
         - shell: echo "⚠️ Docker installation failed." >> {{ log_file }}
     
-    - name: Log Docker installation
+    - name: 198/243 Log Docker installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "13. DOCKER + NVIDIA RUNTIME - $(date)" >> {{ log_file }}
@@ -1832,7 +1832,7 @@
     # ==========================================================
     # 14. PYTHON & DEV TOOLS
     # ==========================================================
-    - name: Install Python and dev tools
+    - name: 199/243 Install Python and dev tools
       apt:
         name:
           - python3
@@ -1846,7 +1846,7 @@
     - shell: python3 --version
       register: pyver
     
-    - name: Log Python installation
+    - name: 200/243 Log Python installation
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "14. PYTHON & DEV TOOLS - $(date)" >> {{ log_file }}
@@ -1859,7 +1859,7 @@
     # ==========================================================
     # 14b. HEALTHCHECKS.IO PROMPT (late, near completion)
     # ==========================================================
-    - name: Prompt for Healthchecks.io URL
+    - name: 201/243 Prompt for Healthchecks.io URL
       pause:
         prompt: |
 
@@ -1879,12 +1879,12 @@
       register: healthchecks_prompt
       when: healthchecks_url is not defined
 
-    - name: Set healthchecks URL from user input or default
+    - name: 202/243 Set healthchecks URL from user input or default
       set_fact:
         healthchecks_url: "{{ healthchecks_prompt.user_input if (healthchecks_prompt.user_input | default('') | length > 0) else 'SKIPPED' }}"
       when: healthchecks_url is not defined
 
-    - name: Set healthchecks URL if already defined
+    - name: 203/243 Set healthchecks URL if already defined
       set_fact:
         healthchecks_url: "{{ healthchecks_url }}"
       when: healthchecks_url is defined
@@ -1892,9 +1892,9 @@
     # ==========================================================
     # 15. HEALTHCHECKS.IO SERVICE
     # ==========================================================
-    - name: Setup Healthchecks.io service
+    - name: 204/243 Setup Healthchecks.io service
       block:
-        - name: Create healthcheck ping script
+        - name: 205/243 Create healthcheck ping script
           copy:
             dest: /usr/local/bin/healthcheck-ping.sh
             mode: '0755'
@@ -1902,7 +1902,7 @@
               #!/bin/bash
               set -e
               curl -fsS -m 10 --retry 5 -o /dev/null "{{ healthchecks_url }}" || echo "Healthcheck failed $(date)"
-        - name: Create systemd service for healthcheck
+        - name: 206/243 Create systemd service for healthcheck
           copy:
             dest: /etc/systemd/system/healthcheck.service
             mode: '0644'
@@ -1913,7 +1913,7 @@
               [Service]
               Type=oneshot
               ExecStart=/usr/local/bin/healthcheck-ping.sh
-        - name: Create systemd timer for healthcheck (every 5 minutes)
+        - name: 207/243 Create systemd timer for healthcheck (every 5 minutes)
           copy:
             dest: /etc/systemd/system/healthcheck.timer
             mode: '0644'
@@ -1929,11 +1929,11 @@
               [Install]
               WantedBy=timers.target
           notify: reload systemd
-        - name: Enable and start healthcheck timer
+        - name: 208/243 Enable and start healthcheck timer
           systemd: { name: healthcheck.timer, enabled: yes, state: started }
           register: healthcheck_timer
 
-        - name: Log healthcheck configuration
+        - name: 209/243 Log healthcheck configuration
           shell: |
             echo "===========================================================" >> {{ log_file }}
             echo "15. HEALTHCHECKS.IO SERVICE - $(date)" >> {{ log_file }}
@@ -1945,7 +1945,7 @@
         - debug: msg="✅ Healthcheck service active (ping every 5 min) - {{ healthchecks_url }}"
       when: healthchecks_url != 'SKIPPED'
 
-    - name: Log healthcheck skipped
+    - name: 210/243 Log healthcheck skipped
       block:
         - shell: |
             echo "===========================================================" >> {{ log_file }}
@@ -1960,7 +1960,7 @@
     # ==========================================================
     # 16. AUTO_TEST PYTHON ENVIRONMENT SETUP
     # ==========================================================
-    - name: Create code directory structure
+    - name: 211/243 Create code directory structure
       file:
         path: "{{ user_home }}/code/auto_test"
         state: directory
@@ -1968,14 +1968,14 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Create Python 3.12 virtual environment
+    - name: 212/243 Create Python 3.12 virtual environment
       become: yes
       become_user: "{{ ssh_user }}"
       command: python3.12 -m venv "{{ user_home }}/code/auto_test/venv"
       args:
         creates: "{{ user_home }}/code/auto_test/venv"
 
-    - name: Upgrade pip, setuptools, and wheel in venv
+    - name: 213/243 Upgrade pip, setuptools, and wheel in venv
       become: yes
       become_user: "{{ ssh_user }}"
       shell: |
@@ -1984,7 +1984,7 @@
       args:
         executable: /bin/bash
 
-    - name: Create activation helper script
+    - name: 214/243 Create activation helper script
       copy:
         dest: "{{ user_home }}/code/auto_test/activate.sh"
         mode: '0755'
@@ -2002,7 +2002,7 @@
               print(f"GPU: {torch.cuda.get_device_name(0)}")
           EOF
 
-    - name: Log auto_test environment setup
+    - name: 215/243 Log auto_test environment setup
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "16. AUTO_TEST PYTHON ENVIRONMENT SETUP - $(date)" >> {{ log_file }}
@@ -2025,16 +2025,16 @@
     # ==========================================================
     # 17. REBOOT NOTIFICATION
     # ==========================================================
-    - name: Check if reboot is required
+    - name: 216/243 Check if reboot is required
       stat:
         path: /var/run/reboot-required
       register: reboot_required_file
 
-    - name: Set reboot requirement fact
+    - name: 217/243 Set reboot requirement fact
       set_fact:
         needs_reboot: "{{ reboot_required_file.stat.exists or nvidia_driver_install.changed }}"
 
-    - name: Log reboot requirement
+    - name: 218/243 Log reboot requirement
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "17. REBOOT NOTIFICATION - $(date)" >> {{ log_file }}
@@ -2048,7 +2048,7 @@
         {% endif %}
         echo "" >> {{ log_file }}
 
-    - name: Display reboot notification
+    - name: 219/243 Display reboot notification
       debug:
         msg: |
           ⚠️  ============================================
@@ -2064,29 +2064,29 @@
     # ==========================================================
     # 17. GIT SETUP (SSH default, standard ed25519 key – prompted at end of run)
     # ==========================================================
-    - name: Prompt for Git user name
+    - name: 220/243 Prompt for Git user name
       pause:
         prompt: "Git user.name for commits on this machine"
       register: git_name_prompt
       when: git_user_name is not defined
 
-    - name: Set git_user_name from prompt
+    - name: 221/243 Set git_user_name from prompt
       set_fact:
         git_user_name: "{{ git_name_prompt.user_input | default('', true) | trim }}"
       when: git_user_name is not defined
 
-    - name: Prompt for Git user email
+    - name: 222/243 Prompt for Git user email
       pause:
         prompt: "Git user.email for commits on this machine"
       register: git_email_prompt
       when: git_user_email is not defined
 
-    - name: Set git_user_email from prompt
+    - name: 223/243 Set git_user_email from prompt
       set_fact:
         git_user_email: "{{ git_email_prompt.user_input | default('', true) | trim }}"
       when: git_user_email is not defined
 
-    - name: Set git user.name and user.email
+    - name: 224/243 Set git user.name and user.email
       command: 'git config --global {{ item.key | quote }} {{ item.value | quote }}'
       loop:
         - { key: "user.name", value: "{{ git_user_name | default('') }}" }
@@ -2095,12 +2095,12 @@
       become_user: "{{ ssh_user }}"
       changed_when: true
 
-    - name: Set Git to use SSH instead of HTTPS for GitHub
+    - name: 225/243 Set Git to use SSH instead of HTTPS for GitHub
       command: git config --global url."git@github.com:".insteadOf "https://github.com/"
       become_user: "{{ ssh_user }}"
       changed_when: true
 
-    - name: Ensure .ssh exists for SSH key
+    - name: 226/243 Ensure .ssh exists for SSH key
       file:
         path: "{{ user_home }}/.ssh"
         state: directory
@@ -2108,7 +2108,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: Generate standard SSH key (ed25519)
+    - name: 227/243 Generate standard SSH key (ed25519)
       command: >
         ssh-keygen -t ed25519 -C "{{ ssh_user }}@{{ ansible_hostname }}"
         -f {{ user_home }}/.ssh/id_ed25519 -N ""
@@ -2116,12 +2116,12 @@
         creates: "{{ user_home }}/.ssh/id_ed25519"
       become_user: "{{ ssh_user }}"
 
-    - name: Check whether SSH config exists
+    - name: 228/243 Check whether SSH config exists
       stat:
         path: "{{ user_home }}/.ssh/config"
       register: ssh_config_stat
 
-    - name: Remove legacy GitHub-specific SSH config block
+    - name: 229/243 Remove legacy GitHub-specific SSH config block
       blockinfile:
         path: "{{ user_home }}/.ssh/config"
         marker: "# {mark} ANSIBLE MANAGED BLOCK - GitHub key"
@@ -2129,12 +2129,12 @@
       when: ssh_config_stat.stat.exists | default(false)
       become_user: "{{ ssh_user }}"
 
-    - name: Read GitHub SSH public key
+    - name: 230/243 Read GitHub SSH public key
       slurp:
         src: "{{ user_home }}/.ssh/id_ed25519.pub"
       register: github_key_content
 
-    - name: Display GitHub SSH public key for user to add
+    - name: 231/243 Display GitHub SSH public key for user to add
       debug:
         msg: |
           ========== ADD THIS KEY TO GITHUB ==========
@@ -2145,12 +2145,12 @@
           ----------
       when: github_key_content.content is defined
 
-    - name: Pause for user to add key to GitHub
+    - name: 232/243 Pause for user to add key to GitHub
       pause:
         prompt: "Add the key above to GitHub, then press Enter to continue"
       when: github_key_content.content is defined
 
-    - name: Log Git setup
+    - name: 233/243 Log Git setup
       shell: |
         echo "===========================================================" >> {{ log_file }}
         echo "17. GIT SETUP - $(date)" >> {{ log_file }}
@@ -2161,7 +2161,7 @@
     # ==========================================================
     # 17b. NETWORK INFO (for user to record, late in run)
     # ==========================================================
-    - name: Gather network interface info for display
+    - name: 234/243 Gather network interface info for display
       shell: |
         echo "========== NETWORK INFO (record MACs and IPs) =========="
         ip -br addr show | while read iface state rest; do
@@ -2175,18 +2175,18 @@
       register: network_info_display
       changed_when: false
 
-    - name: Display network info to user
+    - name: 235/243 Display network info to user
       debug:
         msg: "{{ network_info_display.stdout_lines }}"
 
-    - name: Log late network info display
+    - name: 236/243 Log late network info display
       shell: "echo 'Network info (MACs, IPs) displayed near completion' >> {{ log_file }}"
       changed_when: false
 
     # ==========================================================
     # 18. FINAL MESSAGE
     # ==========================================================
-    - name: Write final summary to log
+    - name: 237/243 Write final summary to log
       shell: |
         echo "===================================================================" >> {{ log_file }}
         echo "✅ Setup complete!" >> {{ log_file }}
@@ -2238,17 +2238,17 @@
           ===================================================================
 
   handlers:
-    - name: restart sshd
+    - name: 238/243 restart sshd
       systemd: { name: sshd, state: restarted }
-    - name: restart docker
+    - name: 239/243 restart docker
       systemd: { name: docker, state: restarted }
-    - name: restart gdm3
+    - name: 240/243 restart gdm3
       systemd: { name: gdm3, state: restarted }
       when: gdm3_config.stat.exists | default(false)
-    - name: restart lightdm
+    - name: 241/243 restart lightdm
       systemd: { name: lightdm, state: restarted }
       when: lightdm_config.stat.exists | default(false)
-    - name: update ldconfig
+    - name: 242/243 update ldconfig
       command: ldconfig
-    - name: reload systemd
+    - name: 243/243 reload systemd
       systemd: { daemon_reload: yes }
