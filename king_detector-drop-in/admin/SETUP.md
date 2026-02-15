@@ -33,8 +33,8 @@ MACHINE_NAME=Mars2 KING_DETECTOR_BRANCH=2.9.0 sudo -E ./admin/setup-crane-machin
 
 1. **Clone / ensure repo** – If `~/code/king_detector` is missing, clones from GitHub (branch from `KING_DETECTOR_BRANCH` or prompt).
 2. **Machine name** – From prompt or `MACHINE_NAME` env var.
-3. **.env** – Creates from `admin/env-file.md` (replacing mars2/Mars2 with machine name) or a fallback template; sets `MODEL_DIR` to `~/data/models`.
-4. **Directories** – Ensures `~/data` and `~/data/models`.
+3. **.env** – Creates from `admin/env-file.md` (replacing mars2/Mars2 with machine name) or a fallback template; sets `MODEL_DIR` to `/data/models`.
+4. **Directories** – Ensures `/data` and `/data/models`.
 5. **Venv and pip** – Creates `.venv` in repo root if missing; installs from `requirementsAutoUbuntu24cuda13.txt`; installs `lap>=0.5.12`.
 6. **xinit** – Installs the `xinit` package if missing.
 7. **crane-display-standalone.service** – Copies `admin/crane-display-standalone.service` to `/etc/systemd/system/`, enables it (does not start it).
@@ -45,7 +45,7 @@ MACHINE_NAME=Mars2 KING_DETECTOR_BRANCH=2.9.0 sudo -E ./admin/setup-crane-machin
 ## After the script: manual steps
 
 1. **Rsync models** (from your Mac):  
-   `rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:~/data/models/`
+   `rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:/data/models/`
 
 2. **Camera time:** SSH forward the camera, open a browser, set the camera time to match the computer:  
    `ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>` then open `http://localhost:8080`.  

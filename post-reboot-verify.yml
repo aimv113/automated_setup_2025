@@ -7,7 +7,7 @@
   vars:
     ssh_user: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
     user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
-    app_data_path: "{{ user_home }}"
+    app_data_path: "/data"
     log_file: "/var/log/ansible-post-reboot-verify-{{ ansible_date_time.iso8601_basic_short }}.log"
     camera_static_start: 200
     camera_probe_ip: "192.168.1.100"
@@ -196,7 +196,7 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
 
-    - name: 16/53 Create data/jpg/video/ad_hoc structure in home (next to code)
+    - name: 16/53 Create data/jpg/video/ad_hoc structure at app_data_path
       file:
         path: "{{ item }}"
         state: directory
@@ -204,14 +204,14 @@
         owner: "{{ ssh_user }}"
         group: "{{ ssh_user }}"
       loop:
-        - "{{ app_data_path }}/data"
-        - "{{ app_data_path }}/data/jpg"
-        - "{{ app_data_path }}/data/video"
-        - "{{ app_data_path }}/data/jpg/no_hook"
-        - "{{ app_data_path }}/data/jpg/no_overlay"
-        - "{{ app_data_path }}/data/ad_hoc"
-        - "{{ app_data_path }}/data/ad_hoc/jpg"
-        - "{{ app_data_path }}/data/ad_hoc/video"
+        - "{{ app_data_path }}"
+        - "{{ app_data_path }}/jpg"
+        - "{{ app_data_path }}/video"
+        - "{{ app_data_path }}/jpg/no_hook"
+        - "{{ app_data_path }}/jpg/no_overlay"
+        - "{{ app_data_path }}/ad_hoc"
+        - "{{ app_data_path }}/ad_hoc/jpg"
+        - "{{ app_data_path }}/ad_hoc/video"
 
     # ==========================================================
     # 8. NETWORKING (NetworkManager + netplan: DHCP + camera static + optional WiFi)

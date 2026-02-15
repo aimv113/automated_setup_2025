@@ -10,7 +10,7 @@ Ongoing log of decisions made and why.
 
 - **Boot mode prompt at playbook start:** User chooses GNOME on boot vs minimal X / king_detector (xdotool) approach. Stored as `boot_mode`; used to install xdotool/x11-xserver-utils when minimal_x and to tailor docs.
 
-- **Data folders created by default:** `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`, `data/ad_hoc/`, `data/ad_hoc/jpg/`, `data/ad_hoc/video/` created under a configurable path (default `~/`, so `~/data` sits next to `~/code`) in the normal run. No longer optional.
+- **Data folders created by default:** `app_data_path` is the data root (default `/data`) and the playbooks create `/data`, `/data/jpg`, `/data/video`, `/data/jpg/no_hook`, `/data/jpg/no_overlay`, `/data/ad_hoc`, `/data/ad_hoc/jpg`, and `/data/ad_hoc/video` in the normal run. No longer optional.
 
 - **Network info at Ansible start:** Playbook displays Ethernet adapters (MAC, IP, connected) and WiFi MAC(s) at start so the user can record them (e.g. for ZeroTier or documentation).
 
