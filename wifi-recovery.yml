@@ -30,6 +30,16 @@
     # ==========================================================
     # 1. BASELINE + TOOLS
     # ==========================================================
+    - name: 0/34 Validate become credentials (must run as root)
+      command: id -u
+      register: become_uid_check
+      changed_when: false
+      failed_when: become_uid_check.stdout | trim != "0"
+
+    - name: 0b/34 Confirm become validation
+      debug:
+        msg: "Become check passed (effective uid=0)."
+
     - name: 1/34 Create WiFi recovery log
       copy:
         dest: "{{ wifi_log_file }}"

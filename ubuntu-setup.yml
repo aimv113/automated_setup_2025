@@ -61,6 +61,16 @@
 
   tasks:
 
+    - name: 0/243 Validate become credentials (must run as root)
+      command: id -u
+      register: become_uid_check
+      changed_when: false
+      failed_when: become_uid_check.stdout | trim != "0"
+
+    - name: 0b/243 Confirm become validation
+      debug:
+        msg: "Become check passed (effective uid=0)."
+
     # ==========================================================
     # 1. INITIALIZE LOG FILE
     # ==========================================================
