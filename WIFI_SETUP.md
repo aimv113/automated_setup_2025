@@ -19,7 +19,7 @@ Run this if either is true:
 Run from repo root:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K -vv
+ansible-playbook wifi-recovery.yml -K -v
 ```
 
 ---
