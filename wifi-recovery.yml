@@ -457,6 +457,8 @@
         dkms add "$src_dir"
         dkms build -m "$mod_name" -v "$mod_ver"
         dkms install -m "$mod_name" -v "$mod_ver"
+      args:
+        executable: /bin/bash
       register: wifi_dkms_install_cmd
       changed_when: true
       when: (wifi_selected_strategy | trim) == 'dkms'
