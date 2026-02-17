@@ -34,6 +34,7 @@ Use `-v` only if you need extra debugging detail.
 - Loaded wireless modules (`lsmod`)
 - Active wireless interfaces (`/sys/class/net/*/wireless`)
 - Running kernel check (native RTL8812AU support threshold at kernel `>= 6.13`)
+- Standard kernel candidate check (`linux-generic` installed vs candidate in apt)
 
 It then proposes a recommended strategy and asks for confirmation.
 Before execution, it prints the exact action plan for the selected strategy and requires confirmation (`YES`) before continuing.
@@ -48,6 +49,7 @@ The playbook prompts with:
 3. Force DKMS path (RTL8812AU only)
 4. Install HWE kernel baseline (reboot required)
 5. Abort
+6. Install newer standard kernel baseline (`linux-generic`) when available
 
 ### Recommendation logic summary
 - RTL8812AU/8821AU family present + active wireless interface -> prefer native path
@@ -72,6 +74,7 @@ Allowed `wifi_strategy_selection` values:
 - `native`
 - `dkms`
 - `hwe_kernel`
+- `standard_kernel`
 - `abort`
 
 Optional secure SSID example:
@@ -113,5 +116,6 @@ iw dev <wifi_iface> link
 ## Notes
 
 - HWE kernel path installs HWE meta packages and exits with reboot instructions.
+- Standard kernel path installs `linux-generic` + `linux-headers-generic` when a newer candidate exists and exits with reboot instructions.
 - DKMS path is implemented here for RTL8812AU only.
 - Log file location: `/var/log/ansible-wifi-recovery-<timestamp>.log`.
