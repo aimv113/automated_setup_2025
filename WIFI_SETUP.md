@@ -19,21 +19,24 @@ Run this if either is true:
 Run from repo root:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K -v
+ansible-playbook wifi-recovery.yml -K
 ```
+
+Use `-v` only if you need extra debugging detail.
 
 ---
 
 ## What it detects automatically
 
 `wifi-recovery.yml` performs hardware and kernel detection before applying changes:
-- USB adapter detection (`lsusb`), including Realtek RTL8812AU (`0bda:8812`)
+- USB adapter detection (`lsusb`), including Realtek RTL8812AU/8821AU family (`0bda:8812`, `0bda:0811`, and `8812au/8821au` signatures)
 - PCIe wireless adapter detection (`lspci`)
 - Loaded wireless modules (`lsmod`)
 - Active wireless interfaces (`/sys/class/net/*/wireless`)
 - Running kernel check (native RTL8812AU support threshold at kernel `>= 6.13`)
 
 It then proposes a recommended strategy and asks for confirmation.
+Before execution, it prints the exact action plan for the selected strategy and requires confirmation (`YES`) before continuing.
 
 ---
 
@@ -47,8 +50,9 @@ The playbook prompts with:
 5. Abort
 
 ### Recommendation logic summary
-- RTL8812AU present + kernel `>= 6.13` -> prefer native path
-- RTL8812AU present + kernel `< 6.13` -> recommend HWE kernel path
+- RTL8812AU/8821AU family present + active wireless interface -> prefer native path
+- RTL8812AU/8821AU family present + no interface and kernel `>= 6.13` -> try native path first
+- RTL8812AU/8821AU family present + no interface and kernel `< 6.13` -> recommend DKMS path
 - Other adapter + wireless interface already present -> native path
 - No adapter detected -> stop and report
 
@@ -59,7 +63,7 @@ The playbook prompts with:
 You can preselect behavior with vars:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K -vv \
+ansible-playbook wifi-recovery.yml -K \
   -e "wifi_interactive=false wifi_strategy_selection=recommended machine_wifi_ssid=OFFICEGST"
 ```
 
@@ -73,7 +77,7 @@ Allowed `wifi_strategy_selection` values:
 Optional secure SSID example:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K -vv \
+ansible-playbook wifi-recovery.yml -K \
   -e "machine_wifi_ssid=MySSID machine_wifi_psk=MyPassword"
 ```
 
