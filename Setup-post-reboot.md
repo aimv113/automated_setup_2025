@@ -37,6 +37,8 @@ ansible-playbook post-reboot-verify.yml -K
 
 **WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, security fields are cleared (no password/key-mgmt values). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
 
+For dedicated WiFi recovery (smart adapter/kernel detection + interactive strategy confirmation), use: [WIFI_SETUP.md](WIFI_SETUP.md).
+
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
 ### WiFi verification and troubleshooting (terminal-first)

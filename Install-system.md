@@ -115,6 +115,8 @@ ansible-playbook ubuntu-setup.yml -K
 - Reboot: `sudo reboot`.
 - **Pass 2:** run the same command again; if the required kernel is active, playbook prompts for setup choices, runs the WiFi readiness gate early, then continues with the rest of setup.
 
+If WiFi is still not ready after the normal flow, run the dedicated WiFi recovery playbook and guide: [WIFI_SETUP.md](WIFI_SETUP.md).
+
 **Prompt timing notes:**
 - If required kernel is not active yet, playbook exits before most interactive prompts.
 - Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip) happens near the end of the run.

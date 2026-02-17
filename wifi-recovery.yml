@@ -1,0 +1,371 @@
+---
+- name: WiFi Recovery and Smart Setup
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  vars:
+    machine_wifi_ssid: "OFFICEGST"
+    machine_wifi_psk: ""
+    wifi_interactive: true
+    wifi_strategy_selection: "recommended"  # recommended|native|dkms|hwe_kernel|abort
+    wifi_allow_kernel_update: false
+    rtl8812au_usb_id: "0bda:8812"
+    rtl8812au_dkms_repo_url: "https://github.com/morrownr/8812au-20210820.git"
+    rtl8812au_dkms_repo_version: "main"
+    rtl8812au_dkms_repo_path: "/opt/installers/8812au-20210820"
+
+    hwe_kernel_meta_package: "linux-generic-hwe-24.04"
+    hwe_kernel_headers_meta_package: "linux-headers-generic-hwe-24.04"
+
+    wifi_log_file: "/var/log/ansible-wifi-recovery-{{ ansible_date_time.iso8601_basic_short }}.log"
+
+  tasks:
+    # ==========================================================
+    # 1. BASELINE + TOOLS
+    # ==========================================================
+    - name: 1/34 Create WiFi recovery log
+      copy:
+        dest: "{{ wifi_log_file }}"
+        mode: '0644'
+        content: |
+          ===================================================================
+          WiFi Recovery Setup - Started at {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          Kernel: {{ ansible_kernel }}
+          ===================================================================
+
+    - name: 2/34 Ensure WiFi/network tooling is installed
+      apt:
+        update_cache: yes
+        name:
+          - network-manager
+          - rfkill
+          - iw
+          - usbutils
+          - pciutils
+          - dkms
+          - build-essential
+          - git
+        state: present
+
+    - name: 3/34 Ensure NetworkManager is enabled and started
+      service:
+        name: NetworkManager
+        enabled: yes
+        state: started
+
+    - name: 4/34 Set WiFi network security mode
+      set_fact:
+        wifi_open_network: "{{ (machine_wifi_psk | default('') | length) == 0 }}"
+
+    # ==========================================================
+    # 2. SMART DETECTION (hardware + kernel + modules)
+    # ==========================================================
+    - name: 5/34 Detect USB WiFi adapters
+      shell: lsusb
+      register: wifi_lsusb
+      changed_when: false
+      failed_when: false
+
+    - name: 6/34 Detect PCIe WiFi adapters
+      shell: lspci -nn | grep -Ei 'Network controller|Wireless|Wi-Fi|802\.11|WLAN|Realtek|Broadcom|Intel Corporation Wireless|MediaTek|Qualcomm' || true
+      register: wifi_lspci
+      changed_when: false
+      failed_when: false
+
+    - name: 7/34 Detect loaded WiFi-related modules
+      shell: lsmod | grep -Ei '8812|88..au|rtw88|rtl8|iwlwifi|mt76|brcm|ath|cfg80211|mac80211' || true
+      register: wifi_lsmod
+      changed_when: false
+      failed_when: false
+
+    - name: 8/34 Detect wireless interfaces
+      shell: |
+        for iface in /sys/class/net/*; do
+          iface_name="${iface##*/}"
+          if [ -d "/sys/class/net/${iface_name}/wireless" ]; then
+            echo "${iface_name}"
+          fi
+        done
+      register: wifi_wireless_ifaces
+      changed_when: false
+      failed_when: false
+
+    - name: 9/34 Set adapter/kernel detection facts
+      set_fact:
+        rtl8812au_present: "{{ (wifi_lsusb.stdout | default('') | regex_search('(?i)' ~ rtl8812au_usb_id)) is not none }}"
+        other_wifi_adapter_detected: "{{ (wifi_lspci.stdout | default('') | trim | length > 0) or ((wifi_lsusb.stdout | default('') | regex_search('(?i)Wireless|WiFi|Wi-Fi|WLAN|802\\.11|Atheros|Ralink|MediaTek|Qualcomm|Broadcom|Intel Corp.*Wireless|Realtek')) is not none) }}"
+        wifi_native_interfaces_present: "{{ (wifi_wireless_ifaces.stdout_lines | default([]) | length) > 0 }}"
+        wifi_kernel_supports_native_8812au: "{{ (ansible_kernel.split('-')[0]) is version('6.13', '>=') }}"
+
+    - name: 10/34 Compute recommended WiFi strategy
+      set_fact:
+        wifi_recommended_strategy: >-
+          {% if rtl8812au_present and wifi_kernel_supports_native_8812au and wifi_native_interfaces_present %}
+          native
+          {% elif rtl8812au_present and wifi_kernel_supports_native_8812au and (not wifi_native_interfaces_present) %}
+          native
+          {% elif rtl8812au_present and (not wifi_kernel_supports_native_8812au) %}
+          hwe_kernel
+          {% elif (not rtl8812au_present) and other_wifi_adapter_detected and wifi_native_interfaces_present %}
+          native
+          {% elif (not rtl8812au_present) and other_wifi_adapter_detected and (not wifi_native_interfaces_present) %}
+          native
+          {% else %}
+          no_adapter
+          {% endif %}
+
+    - name: 11/34 Show detection summary and recommendation
+      debug:
+        msg: |
+          WiFi smart detection summary:
+          - Running kernel: {{ ansible_kernel }}
+          - RTL8812AU present ({{ rtl8812au_usb_id }}): {{ rtl8812au_present }}
+          - Other WiFi adapter detected: {{ other_wifi_adapter_detected }}
+          - Wireless interfaces detected: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}
+          - Native 8812au support (kernel >= 6.13): {{ wifi_kernel_supports_native_8812au }}
+          - Recommended strategy: {{ wifi_recommended_strategy }}
+
+    # ==========================================================
+    # 3. OPERATOR CONFIRMATION
+    # ==========================================================
+    - name: 12/34 Ask operator strategy choice (interactive)
+      pause:
+        prompt: |
+
+          ============================================================
+          WIFI RECOVERY STRATEGY
+          ============================================================
+          Recommended: {{ wifi_recommended_strategy }}
+          Choose what to do:
+            1) Apply recommended strategy
+            2) Force native/in-kernel path
+            3) Force DKMS install path (RTL8812AU only)
+            4) Install HWE kernel baseline (requires reboot)
+            5) Abort
+          Enter 1, 2, 3, 4, or 5
+      register: wifi_strategy_prompt
+      when: wifi_interactive | bool
+
+    - name: 13/34 Set selected strategy from interactive choice
+      set_fact:
+        wifi_selected_strategy: "{{ ({'1': (wifi_recommended_strategy | trim), '2': 'native', '3': 'dkms', '4': 'hwe_kernel', '5': 'abort'}).get((wifi_strategy_prompt.user_input | default('1') | trim), (wifi_recommended_strategy | trim)) }}"
+      when: wifi_interactive | bool
+
+    - name: 14/34 Set selected strategy from vars (non-interactive)
+      set_fact:
+        wifi_selected_strategy: "{{ (wifi_recommended_strategy | trim) if wifi_strategy_selection == 'recommended' else (wifi_strategy_selection if wifi_strategy_selection in ['native', 'dkms', 'hwe_kernel', 'abort'] else (wifi_recommended_strategy | trim)) }}"
+      when: not (wifi_interactive | bool)
+
+    - name: 15/34 Log selected strategy
+      shell: |
+        {
+          echo "==========================================================="
+          echo "Selected WiFi strategy: {{ wifi_selected_strategy }}"
+          echo "Recommended strategy: {{ wifi_recommended_strategy }}"
+          echo "Kernel: {{ ansible_kernel }}"
+          echo "Interfaces detected: {{ (wifi_wireless_ifaces.stdout_lines | default([]) | join(', ')) if (wifi_wireless_ifaces.stdout_lines | default([]) | length > 0) else 'none' }}"
+          echo "==========================================================="
+          echo
+        } >> {{ wifi_log_file }}
+
+    - name: 16/34 Abort when operator selected abort
+      meta: end_play
+      when: (wifi_selected_strategy | trim) == 'abort'
+
+    - name: 17/34 Fail when no adapter is detected
+      fail:
+        msg: |
+          No WiFi adapter was detected.
+          Check USB/PCIe adapter connection and re-run this playbook.
+      when: (wifi_selected_strategy | trim) == 'no_adapter'
+
+    - name: 18/34 Guard DKMS strategy when adapter is not RTL8812AU
+      fail:
+        msg: "DKMS path is only supported here for RTL8812AU ({{ rtl8812au_usb_id }}), but that adapter was not detected."
+      when:
+        - (wifi_selected_strategy | trim) == 'dkms'
+        - not (rtl8812au_present | bool)
+
+    # ==========================================================
+    # 4. HWE KERNEL PATH (if chosen)
+    # ==========================================================
+    - name: 19/34 Ask confirmation before kernel update (interactive safety)
+      pause:
+        prompt: |
+          HWE kernel install will modify kernel packages and requires reboot.
+          Type YES to continue, anything else to stop this run.
+      register: wifi_kernel_confirm_prompt
+      when:
+        - (wifi_selected_strategy | trim) == 'hwe_kernel'
+        - wifi_interactive | bool
+        - not (wifi_allow_kernel_update | bool)
+
+    - name: 20/34 Set kernel update approval fact
+      set_fact:
+        wifi_allow_kernel_update: "{{ (wifi_kernel_confirm_prompt.user_input | default('') | trim) == 'YES' }}"
+      when:
+        - (wifi_selected_strategy | trim) == 'hwe_kernel'
+        - wifi_interactive | bool
+
+    - name: 21/34 Stop when kernel update not approved
+      fail:
+        msg: "Kernel update was not approved. Re-run and select a different strategy or approve HWE install."
+      when:
+        - (wifi_selected_strategy | trim) == 'hwe_kernel'
+        - not (wifi_allow_kernel_update | bool)
+
+    - name: 22/34 Install HWE kernel packages
+      apt:
+        update_cache: yes
+        name:
+          - "{{ hwe_kernel_meta_package }}"
+          - "{{ hwe_kernel_headers_meta_package }}"
+        state: present
+      when: (wifi_selected_strategy | trim) == 'hwe_kernel'
+
+    - name: 23/34 End run with reboot instruction after HWE install
+      debug:
+        msg: |
+          HWE kernel packages installed. Reboot now, then re-run:
+          ansible-playbook wifi-recovery.yml -K -vv
+      when: (wifi_selected_strategy | trim) == 'hwe_kernel'
+
+    - name: 24/34 Stop after HWE install path
+      meta: end_play
+      when: (wifi_selected_strategy | trim) == 'hwe_kernel'
+
+    # ==========================================================
+    # 5. DKMS PATH (if chosen)
+    # ==========================================================
+    - name: 25/34 Install running-kernel headers for DKMS
+      apt:
+        update_cache: yes
+        name:
+          - "linux-headers-{{ ansible_kernel }}"
+        state: present
+      when: (wifi_selected_strategy | trim) == 'dkms'
+
+    - name: 26/34 Clone/update RTL8812AU DKMS repository
+      git:
+        repo: "{{ rtl8812au_dkms_repo_url }}"
+        dest: "{{ rtl8812au_dkms_repo_path }}"
+        version: "{{ rtl8812au_dkms_repo_version }}"
+        update: yes
+      when: (wifi_selected_strategy | trim) == 'dkms'
+
+    - name: 27/34 Build/install RTL8812AU DKMS driver
+      command: make dkms_install
+      args:
+        chdir: "{{ rtl8812au_dkms_repo_path }}"
+      register: wifi_dkms_install_cmd
+      changed_when: "'already contains' not in (wifi_dkms_install_cmd.stdout | default('') | lower)"
+      failed_when: >-
+        wifi_dkms_install_cmd.rc != 0 and
+        ('already contains' not in (wifi_dkms_install_cmd.stdout | default('') | lower)) and
+        ('already installed' not in (wifi_dkms_install_cmd.stdout | default('') | lower))
+      when: (wifi_selected_strategy | trim) == 'dkms'
+
+    - name: 28/34 Probe modules after DKMS install
+      command: "modprobe {{ item }}"
+      loop:
+        - 8812au
+        - rtw88_8812au
+      failed_when: false
+      changed_when: false
+      when: (wifi_selected_strategy | trim) == 'dkms'
+
+    # ==========================================================
+    # 6. INTERFACE SELECTION + NM/NETPLAN CONFIG
+    # ==========================================================
+    - name: 29/34 Re-detect wireless interfaces after strategy actions
+      shell: |
+        for iface in /sys/class/net/*; do
+          iface_name="${iface##*/}"
+          if [ -d "/sys/class/net/${iface_name}/wireless" ]; then
+            echo "${iface_name}"
+          fi
+        done
+      register: wifi_wireless_ifaces_final
+      retries: 8
+      delay: 3
+      until: (wifi_wireless_ifaces_final.stdout_lines | default([]) | length) > 0
+      changed_when: false
+      failed_when: false
+
+    - name: 30/34 Fail when no wireless interface is available after selected strategy
+      fail:
+        msg: |
+          No wireless interface is available after strategy '{{ wifi_selected_strategy }}'.
+          Check adapter power/USB seat/driver state and re-run.
+      when: (wifi_wireless_ifaces_final.stdout_lines | default([]) | length) == 0
+
+    - name: 31/34 Ask operator to choose WiFi interface when multiple are present
+      pause:
+        prompt: |
+          Detected wireless interfaces: {{ wifi_wireless_ifaces_final.stdout_lines | join(', ') }}
+          Press Enter to use '{{ wifi_wireless_ifaces_final.stdout_lines[0] }}',
+          or type a specific interface name.
+      register: wifi_iface_prompt
+      when:
+        - wifi_interactive | bool
+        - (wifi_wireless_ifaces_final.stdout_lines | length) > 1
+
+    - name: 32/34 Set WiFi interface fact
+      set_fact:
+        machine_wifi_interface: >-
+          {% if wifi_interactive and (wifi_iface_prompt is defined) and ((wifi_iface_prompt.user_input | default('') | trim) | length > 0) %}
+          {{ wifi_iface_prompt.user_input | trim }}
+          {% else %}
+          {{ wifi_wireless_ifaces_final.stdout_lines[0] }}
+          {% endif %}
+
+    - name: 33/34 Configure NetworkManager + WiFi profiles
+      shell: |
+        set -e
+
+        nmcli radio wifi on || true
+        nmcli device set "{{ machine_wifi_interface }}" managed yes || true
+        nmcli device connect "{{ machine_wifi_interface }}" || true
+
+        if ! nmcli -t -f NAME connection show | grep -Fx "{{ machine_wifi_ssid }}-2.4GHz" >/dev/null; then
+          nmcli connection add type wifi ifname "{{ machine_wifi_interface }}" con-name "{{ machine_wifi_ssid }}-2.4GHz" ssid "{{ machine_wifi_ssid }}" wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100 ipv4.method auto ipv6.method auto
+        fi
+
+        if ! nmcli -t -f NAME connection show | grep -Fx "{{ machine_wifi_ssid }}-5GHz" >/dev/null; then
+          nmcli connection add type wifi ifname "{{ machine_wifi_interface }}" con-name "{{ machine_wifi_ssid }}-5GHz" ssid "{{ machine_wifi_ssid }}" wifi.band a connection.autoconnect yes connection.autoconnect-priority 10 ipv4.method auto ipv6.method auto
+        fi
+
+        nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz" connection.interface-name "{{ machine_wifi_interface }}" wifi.band bg connection.autoconnect yes connection.autoconnect-priority 100
+        nmcli connection modify "{{ machine_wifi_ssid }}-5GHz" connection.interface-name "{{ machine_wifi_interface }}" wifi.band a connection.autoconnect yes connection.autoconnect-priority 10
+
+        {% if wifi_open_network | bool %}
+        nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
+        nmcli connection modify "{{ machine_wifi_ssid }}-5GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
+        {% else %}
+        nmcli connection modify "{{ machine_wifi_ssid }}-2.4GHz" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "{{ machine_wifi_psk }}"
+        nmcli connection modify "{{ machine_wifi_ssid }}-5GHz" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "{{ machine_wifi_psk }}"
+        {% endif %}
+
+        nmcli dev wifi rescan >/dev/null 2>&1 || true
+        if nmcli -t -f SSID device wifi list | grep -Fx "{{ machine_wifi_ssid }}" >/dev/null; then
+          nmcli connection up "{{ machine_wifi_ssid }}-2.4GHz" || nmcli connection up "{{ machine_wifi_ssid }}-5GHz" || true
+        fi
+      register: wifi_nm_config
+      changed_when: "'successfully' in (wifi_nm_config.stdout | default('') | lower)"
+
+    - name: 34/34 Show final WiFi status and next action
+      debug:
+        msg: |
+          WiFi recovery playbook completed.
+          - Selected strategy: {{ wifi_selected_strategy }}
+          - WiFi interface: {{ machine_wifi_interface }}
+          - SSID target: {{ machine_wifi_ssid }}
+          - Open network mode: {{ wifi_open_network }}
+
+          Validate now:
+            nmcli device status
+            nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show {{ machine_wifi_interface }}
+            iw dev {{ machine_wifi_interface }} link
