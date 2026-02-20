@@ -41,9 +41,9 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
-## 1c. Snapshot management (recommended: snapper; optional grub integration)
+## 1c. Snapshot management (snapper)
 
-Use `snapper` as the primary snapshot manager. `grub-btrfs` is optional when available in your apt repositories.
+Use `snapper` for btrfs snapshot management.
 
 1. Confirm filesystem layout first:
 ```bash
@@ -67,40 +67,33 @@ Optional GUI:
 sudo apt install -y btrfs-assistant
 ```
 
-Optional boot menu integration (`grub-btrfs`) if package exists:
-```bash
-if apt-cache show grub-btrfs >/dev/null 2>&1; then
-  sudo apt install -y grub-btrfs
-  sudo systemctl enable --now grub-btrfsd
-else
-  echo "grub-btrfs package not available in current apt repos; continue with snapper-only workflow."
-fi
-```
-
 3. Create `snapper` configs:
 ```bash
 sudo snapper -c root create-config /
 sudo snapper -c home create-config /home
 ```
 
-4. Create baseline "factory" snapshots:
+If **create-config** fails:
+- **".snapshots already exists"** – A leftover `.snapshots` is present. For root: if `/.snapshots` is a normal directory, remove it with `sudo rm -rf /.snapshots` then run `create-config /` again. If it is a btrfs subvolume, use `sudo btrfs subvolume delete /.snapshots` (or delete by ID). For home, remove `/home/.snapshots` the same way if needed, then retry.
+- **"config already exists"** for `/home` but `sudo snapper list-configs` does not show `home` – Create the home config under another name, e.g. `sudo snapper -c home_vol create-config /home`, and use that name (`home_vol`) in all later commands below (create, list, rollback).
+
+4. Create baseline "factory" snapshots (use your home config name, e.g. `home` or `home_vol`):
 ```bash
 STAMP="$(date +%Y%m%d-%H%M)"
 sudo snapper -c root create --type single --description "factory-root-${STAMP}"
 sudo snapper -c home create --type single --description "factory-home-${STAMP}"
+# If you used home_vol: replace 'home' with 'home_vol' in the second line
 ```
 
 5. Verify:
 ```bash
 sudo snapper -c root list
 sudo snapper -c home list
-systemctl status grub-btrfsd --no-pager 2>/dev/null || true
+# If you used home_vol: use -c home_vol for the second command
 ```
 
 6. Rollback workflow (high level):
-- If `grub-btrfs` is installed: boot into a snapshot entry for verification, then rollback.
-- If `grub-btrfs` is not installed: rollback from a root shell/live environment with `snapper rollback`.
-- Reboot and confirm system state.
+- From a root shell or live environment, run `snapper rollback` (use `-c root` or `-c home` / `-c home_vol` as appropriate), then reboot and confirm system state.
 
 Safety note:
 - If swap is an active swapfile on the same btrfs subvolume as `/`, all snapshot tools (including `snapper`) can fail on root snapshots.
