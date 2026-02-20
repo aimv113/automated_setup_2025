@@ -41,101 +41,6 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
-## 1c. Snapshot management (snapper)
-
-Use **snapper** only for btrfs snapshots. Do the steps below in order. Do **not** create `.snapshots` by hand or use raw `btrfs subvolume snapshot` for root/home—snapper manages its own `.snapshots` subvolumes.
-
-### Prerequisites
-
-- `/` and `/home` must be btrfs (check with `findmnt -no TARGET,FSTYPE / /home`).
-- If you use a **swapfile** on the same btrfs subvolume as `/`, root snapshots can fail. Prefer a swap partition or turn swap off before creating root snapshots.
-
-### Step 1: Clean state (only if you tried snapper or manual snapshots before)
-
-If you already have `.snapshots` or snapper configs from earlier attempts, you must do **all** of the following. If you only remove config files (or only remove `.snapshots`), create-config will keep saying “config already exists.”
-
-```bash
-# 1. Remove config files (use the names list-configs showed)
-sudo rm -f /etc/snapper/configs/root /etc/snapper/configs/home /etc/snapper/configs/home_vol
-
-# 2. Restart snapperd so it drops its cached list of configs
-sudo systemctl restart snapperd
-
-# 3. Remove .snapshots (snapper treats existing .snapshots as "config exists")
-#    If it's a subvolume: btrfs deletes it. If it's a directory: rm -rf.
-sudo btrfs subvolume show /.snapshots 2>/dev/null && sudo btrfs subvolume delete /.snapshots || sudo rm -rf /.snapshots
-sudo btrfs subvolume show /home/.snapshots 2>/dev/null && sudo btrfs subvolume delete /home/.snapshots || sudo rm -rf /home/.snapshots
-```
-
-Then continue from Step 2.
-
-### Step 2: Install snapper
-
-```bash
-sudo apt update
-sudo apt install -y snapper
-```
-
-Optional GUI: `sudo apt install -y btrfs-assistant`
-
-### Step 3: Create configs
-
-```bash
-sudo snapper -c root create-config /
-sudo snapper -c home create-config /home
-```
-
-If the **home** command fails with **"config already exists"** or **"subvolume already covered"**, create the home config under a different name and use that name everywhere below:
-
-```bash
-sudo snapper -c home_vol create-config /home
-```
-
-Check which configs you have (you will need the home config name for the next steps):
-
-```bash
-sudo snapper list-configs
-```
-
-Example output: `root | /` and either `home | /home` or `home_vol | /home`. Use the **exact** name shown for the home config (e.g. `home` or `home_vol`) in all following commands.
-
-### Step 4: Create factory snapshots
-
-Replace `HOME_CONFIG` with the home config name from `list-configs` (e.g. `home` or `home_vol`).
-
-```bash
-STAMP="$(date +%Y%m%d-%H%M)"
-sudo snapper -c root create --type single --description "factory-root-${STAMP}"
-sudo snapper -c HOME_CONFIG create --type single --description "factory-home-${STAMP}"
-```
-
-Example if your home config is `home_vol`:
-
-```bash
-STAMP="$(date +%Y%m%d-%H%M)"
-sudo snapper -c root create --type single --description "factory-root-${STAMP}"
-sudo snapper -c home_vol create --type single --description "factory-home-${STAMP}"
-```
-
-### Step 5: Verify
-
-Again use your home config name for the second line:
-
-```bash
-sudo snapper -c root list
-sudo snapper -c HOME_CONFIG list
-```
-
-### Step 6: Rollback (when needed)
-
-From a root shell or live system: `sudo snapper -c root rollback` or `sudo snapper -c HOME_CONFIG rollback`, then reboot. Use the same config names as in list-configs.
-
-### Summary
-
-- **Snapper only**—no grub-btrfs; rollback is from root/live with `snapper rollback`.
-- **Config names:** Always use the names from `sudo snapper list-configs`. Using a name that doesn’t exist (e.g. `-c home` when you have `home_vol`) causes “Unknown config.”
-- **Restored by snapshots:** `/` and `/home`. **Not** restored: `/data`, `/boot`.
-
 ### WiFi verification and troubleshooting (terminal-first)
 
 Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
@@ -157,9 +62,9 @@ nmcli radio all
 ```bash
 sudo rfkill unblock all
 nmcli radio wifi on
-sudo ip link set <wifi_iface> up
-nmcli device set <wifi_iface> managed yes
-nmcli device connect <wifi_iface>
+sudo ip link set wls2 up
+nmcli device set wls2 managed yes
+nmcli device connect wls2
 ```
 
 4. Scan and confirm the expected SSID is visible:
@@ -176,7 +81,7 @@ nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless.band,802-11-wireless
 
 6. If old/incorrect profiles exist, recreate clean open-network profiles:
 ```bash
-IFACE="<wifi_iface>"
+IFACE="wls2"
 SSID="OFFICEGST"
 nmcli -t -f NAME connection show | grep -qx "${SSID}-2.4GHz" && nmcli connection delete "${SSID}-2.4GHz" || true
 nmcli -t -f NAME connection show | grep -qx "${SSID}-5GHz" && nmcli connection delete "${SSID}-5GHz" || true
@@ -190,15 +95,15 @@ nmcli connection up "${SSID}-2.4GHz" || nmcli connection up "${SSID}-5GHz"
 
 7. Confirm link + IP + route:
 ```bash
-iw dev <wifi_iface> link
-ip a show <wifi_iface>
+iw dev wls2 link
+ip a show wls2
 ip route
 ```
 
 8. Quick failure triage if still not connected:
 ```bash
 nmcli device status
-nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show <wifi_iface>
+nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show wls2
 sudo journalctl -u NetworkManager -b --no-pager | tail -n 120
 sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..au|rtw88|usb' | tail -n 150
 ```
@@ -207,100 +112,28 @@ sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..
 
 ## 1d. Camera interface manual recovery (only if warning appears)
 
-Use this when `post-reboot-verify.yml` reports camera probe failure (`192.168.1.100 unreachable`).
-
-1. List ethernet interfaces:
 ```bash
-ip -br link
-```
+sudo tee /etc/netplan/99-machine-network.yaml > /dev/null << 'EOF'
+# Single netplan for machine: NetworkManager renderer, ethernet (DHCP + camera static).
+# WiFi is configured via nmcli (connect automatically to machine_wifi_ssid, default OFFICEGST).
+# Generated by post-reboot-verify. Replaces 50-cloud-init to avoid conflicts.
+network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    ens21f0:
+      dhcp4: true
 
-2. Exclude internet-connected interfaces (leave these untouched):
-```bash
-for i in $(ls /sys/class/net); do
-  [ "$i" = "lo" ] && continue
-  [ -d "/sys/class/net/$i/wireless" ] && continue
-  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
-  [ -e "/sys/class/net/$i/device" ] || continue
-  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && echo "$i has internet (skip)"
-done
-```
-
-3. Probe remaining ethernet interfaces for camera reachability:
-```bash
-for i in $(ls /sys/class/net); do
-  [ "$i" = "lo" ] && continue
-  [ -d "/sys/class/net/$i/wireless" ] && continue
-  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
-  [ -e "/sys/class/net/$i/device" ] || continue
-  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && continue
-  sudo ip link set "$i" up
-  sudo ip addr add 192.168.1.254/24 dev "$i" 2>/dev/null || true
-  if ping -c 1 -W 2 -I "$i" 192.168.1.100 >/dev/null 2>&1; then
-    echo "camera_iface=$i"
-  fi
-  sudo ip addr del 192.168.1.254/24 dev "$i" 2>/dev/null || true
-done
-```
-
-4. Assign camera static IP on the found interface (replace `<camera_iface>`):
-```bash
-sudo ip addr flush dev <camera_iface>
-sudo ip addr add 192.168.1.200/24 dev <camera_iface>
-sudo ip link set <camera_iface> up
-ping -c 3 -I <camera_iface> 192.168.1.100
-```
-
-5. Persist in netplan (`/etc/netplan/99-machine-network.yaml`), then apply:
-```bash
-sudo nano /etc/netplan/99-machine-network.yaml
-sudo netplan generate && sudo netplan apply
-```
-
-6. Re-run verification playbook:
-```bash
-cd ~/automated_setup_2025
-./run-playbook-smart.sh post-reboot-verify.yml -vv
+    ens3f0:
+      dhcp4: false
+      addresses:
+        - 192.168.1.200/24
+      optional: true
+EOF
+sudo netplan apply && sleep 2 && ip addr show ens3f0 && ping -c 3 -I ens3f0 192.168.1.100
 ```
 
 ---
-
-## 2. Firefox default browser
-
-- [ ] Set Firefox as default browser:
-
-```bash
-xdg-settings set default-web-browser firefox_firefox.desktop
-xdg-mime default firefox_firefox.desktop x-scheme-handler/http
-xdg-mime default firefox_firefox.desktop x-scheme-handler/https
-```
-
----
-
-## 3. Crontab (scheduled reboots)
-
-The main playbook (**ubuntu-setup.yml**) installs root cron entries for reboots at **06:00 and 18:00** and a log line. No manual edit needed unless you want to change the schedule.
-
-verify with 
-```bash
-sudo crontab -l
-```
-(you should see reboot and cron_test.log entries at 0 6,18). To change times, edit with `sudo crontab -e`.
-
----
-
-## 4. VNC
-
-- [ ] Open and log into the VNC server.
-
----
-
-## 5. VS Code and Git
-
-- [ ] Install extensions (e.g. Python, Data preview, indent rainbow, rainbow csv).
-
----
-
-
 ## 6. Touch screen (if applicable)
 
 - [ ] Install packages and add Xorg config:
