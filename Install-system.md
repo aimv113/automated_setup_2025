@@ -18,7 +18,6 @@ For recommended disk layout (ext4 `/data` + btrfs system snapshots with `/home` 
 <img width="854" height="592" alt="image" src="https://github.com/user-attachments/assets/74db92e8-8253-499f-9e1f-d9fed9377af1" />
 
 
-<img width="290" height="112" alt="image" src="https://github.com/user-attachments/assets/3396e9e5-dd4f-4c0f-ac42-a87571b976ff" />
 
 SSH keys from GIT
 
