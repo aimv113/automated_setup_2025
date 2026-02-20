@@ -15,7 +15,6 @@ Do this first so you can get from HPE iLO (or console) to a usable SSH session.
 Download Ubuntu 24.04 Server, boot from USB
 
 For recommended disk layout (ext4 `/data` + btrfs system snapshots with `/home` considerations), see [PARTITION_LAYOUT_GUIDE.md](PARTITION_LAYOUT_GUIDE.md).
-<img width="854" height="592" alt="image" src="https://github.com/user-attachments/assets/74db92e8-8253-499f-9e1f-d9fed9377af1" />
 
 
 
