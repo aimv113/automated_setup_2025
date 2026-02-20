@@ -41,6 +41,43 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
+## 1c. Create baseline btrfs snapshots (factory point)
+
+Use this once the machine is fully configured and healthy. This creates a read-only baseline snapshot for both system and home.
+
+1. Confirm filesystem layout is correct first:
+```bash
+findmnt -no TARGET,FSTYPE / /home /data /boot /boot/efi
+```
+
+Expected:
+- `/` and `/home` are `btrfs`
+- `/data` is `ext4`
+- `/boot` is `ext4`
+- `/boot/efi` is `vfat`
+
+2. Create snapshot directories (safe if already present):
+```bash
+sudo mkdir -p /.snapshots
+```
+
+3. Create read-only baseline snapshots:
+```bash
+STAMP="$(date +%Y%m%d-%H%M)"
+sudo btrfs subvolume snapshot -r / "/.snapshots/root-factory-${STAMP}"
+sudo btrfs subvolume snapshot -r /home "/.snapshots/home-factory-${STAMP}"
+```
+
+4. Verify snapshots exist:
+```bash
+sudo btrfs subvolume list /
+sudo ls -lah /.snapshots
+```
+
+Restore scope reminder:
+- Restored by these snapshots: `/` and `/home`
+- Not restored by these snapshots: `/data` and separate `/boot`
+
 ### WiFi verification and troubleshooting (terminal-first)
 
 Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
@@ -110,7 +147,7 @@ sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..
 
 ---
 
-## 1b. Camera interface manual recovery (only if warning appears)
+## 1d. Camera interface manual recovery (only if warning appears)
 
 Use this when `post-reboot-verify.yml` reports camera probe failure (`192.168.1.100 unreachable`).
 
