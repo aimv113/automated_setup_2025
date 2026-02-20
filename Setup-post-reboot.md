@@ -41,11 +41,11 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
-## 1c. Create baseline btrfs snapshots (factory point)
+## 1c. Snapshot management (recommended: snapper + grub-btrfs)
 
-Use this once the machine is fully configured and healthy. This creates a read-only baseline snapshot for both system and home.
+Use `snapper` as the snapshot manager and `grub-btrfs` for boot menu integration.
 
-1. Confirm filesystem layout is correct first:
+1. Confirm filesystem layout first:
 ```bash
 findmnt -no TARGET,FSTYPE / /home /data /boot /boot/efi
 ```
@@ -56,53 +56,54 @@ Expected:
 - `/boot` is `ext4`
 - `/boot/efi` is `vfat`
 
-2. Create snapshot directories (safe if already present):
+2. Install tooling:
 ```bash
-sudo mkdir -p /.snapshots
+sudo apt update
+sudo apt install -y snapper grub-btrfs
 ```
 
-3. Create a read-only baseline snapshot for `/` (handles active swapfiles):
+Optional GUI:
+```bash
+sudo apt install -y btrfs-assistant
+```
+
+3. Create `snapper` configs:
+```bash
+sudo snapper -c root create-config /
+sudo snapper -c home create-config /home
+```
+
+4. Enable GRUB integration service:
+```bash
+sudo systemctl enable --now grub-btrfsd
+```
+
+5. Create baseline "factory" snapshots:
 ```bash
 STAMP="$(date +%Y%m%d-%H%M)"
-
-# btrfs cannot snapshot a subvolume that contains an active swapfile.
-SWAPFILES="$(swapon --show=NAME,TYPE --noheadings | awk '$2 == \"file\" {print $1}')"
-for sf in $SWAPFILES; do
-  sudo swapoff "$sf"
-done
-
-sudo btrfs subvolume snapshot -r / "/.snapshots/root-factory-${STAMP}"
-
-for sf in $SWAPFILES; do
-  sudo swapon "$sf"
-done
+sudo snapper -c root create --type single --description "factory-root-${STAMP}"
+sudo snapper -c home create --type single --description "factory-home-${STAMP}"
 ```
 
-4. Create a read-only `/home` snapshot (same-filesystem safe):
+6. Verify:
 ```bash
-ROOT_SRC="$(findmnt -n -o SOURCE /)"
-HOME_SRC="$(findmnt -n -o SOURCE /home)"
-HOME_FSTYPE="$(findmnt -n -o FSTYPE /home)"
-
-if [ "$HOME_FSTYPE" != "btrfs" ]; then
-  echo "/home is not btrfs ($HOME_FSTYPE). Skipping /home snapshot."
-elif [ "$HOME_SRC" = "$ROOT_SRC" ]; then
-  sudo btrfs subvolume snapshot -r /home "/.snapshots/home-factory-${STAMP}"
-else
-  sudo mkdir -p /home/.snapshots
-  sudo btrfs subvolume snapshot -r /home "/home/.snapshots/home-factory-${STAMP}"
-fi
+sudo snapper -c root list
+sudo snapper -c home list
+sudo systemctl status grub-btrfsd --no-pager
 ```
 
-5. Verify snapshots exist:
-```bash
-sudo btrfs subvolume list /
-sudo ls -lah /.snapshots
-```
+7. Rollback workflow (high level):
+- Boot into a `grub-btrfs` snapshot entry for verification.
+- Perform rollback with `snapper rollback` on the target config.
+- Reboot and confirm system state.
+
+Safety note:
+- If swap is an active swapfile on the same btrfs subvolume as `/`, all snapshot tools (including `snapper`) can fail on root snapshots.
+- Prefer a swap partition, or a dedicated non-snapshotted swap subvolume/mount.
 
 Restore scope reminder:
-- Restored by these snapshots: `/` and `/home`
-- Not restored by these snapshots: `/data` and separate `/boot`
+- Restored by btrfs snapshots: `/` and `/home`
+- Not restored by btrfs snapshots: `/data` and separate `/boot`
 
 ### WiFi verification and troubleshooting (terminal-first)
 
