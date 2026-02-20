@@ -8,6 +8,8 @@ See **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** for the full setup flow and what 
 
 The playbook deploys SSH keys from **`ssh-public-keys.txt`** in this repo to the machine’s `~/.ssh/authorized_keys`; ensure that file contains the public keys you want installed.
 
+Prefer running playbooks through `./run-playbook-smart.sh <playbook.yml> [args]`. It uses existing sudo privileges when available and only adds `-K` when needed.
+
 Current run flow for fresh machines is usually two-pass:
 1. First run installs/pins HWE kernel baseline (`6.17.0-14-generic`) and exits if reboot is needed.
 2. Reboot, run the playbook again, then WiFi readiness is checked early and the rest of setup continues.

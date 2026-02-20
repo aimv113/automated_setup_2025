@@ -30,7 +30,7 @@ sudo nano /etc/ssh/sshd_config
 
 ```bash
 cd ~/automated_setup_2025
-ansible-playbook post-reboot-verify.yml -K
+./run-playbook-smart.sh post-reboot-verify.yml
 ```
 
 **Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
@@ -164,7 +164,7 @@ sudo netplan generate && sudo netplan apply
 6. Re-run verification playbook:
 ```bash
 cd ~/automated_setup_2025
-ansible-playbook post-reboot-verify.yml -K -vv
+./run-playbook-smart.sh post-reboot-verify.yml -vv
 ```
 
 ---

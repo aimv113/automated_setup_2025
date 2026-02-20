@@ -19,7 +19,7 @@ Run this if either is true:
 Run from repo root:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K
+./run-playbook-smart.sh wifi-recovery.yml
 ```
 
 Use `-v` only if you need extra debugging detail.
@@ -65,7 +65,7 @@ The playbook prompts with:
 You can preselect behavior with vars:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K \
+./run-playbook-smart.sh wifi-recovery.yml \
   -e "wifi_interactive=false wifi_strategy_selection=recommended machine_wifi_ssid=OFFICEGST"
 ```
 
@@ -80,7 +80,7 @@ Allowed `wifi_strategy_selection` values:
 Optional secure SSID example:
 
 ```bash
-ansible-playbook wifi-recovery.yml -K \
+./run-playbook-smart.sh wifi-recovery.yml \
   -e "machine_wifi_ssid=MySSID machine_wifi_psk=MyPassword"
 ```
 
