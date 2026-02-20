@@ -108,7 +108,7 @@ What does not get restored by btrfs root/home snapshots:
 Practical recommendation:
 1. After first clean build, create a named baseline snapshot for both `@` and `@home` (for example `factory-YYYYMMDD`).
 2. Keep `/boot` backup notes/files as part of recovery docs.
-3. Use `snapper` + `grub-btrfs` to boot/select snapshot rollback entries (see `/Users/finnmainstone/code/automated_setup_2025/Setup-post-reboot.md` section `1c` for setup commands).
+3. Use `snapper` as the required snapshot manager; use `grub-btrfs` optionally when available in apt repos (see `/Users/finnmainstone/code/automated_setup_2025/Setup-post-reboot.md` section `1c`).
 
 ## `/home` strategy for this project
 
@@ -122,7 +122,7 @@ If needed, place user data directories on `/data` (bind mounts or symlinks) to r
 
 For automated snapshot + rollback workflow on Ubuntu:
 - `snapper` for snapshot management
-- `grub-btrfs` for boot menu entries to snapshots
+- `grub-btrfs` for boot menu entries to snapshots (optional, repo-dependent)
 - `btrfs-assistant` (optional GUI)
 
 After installing tooling, test once:

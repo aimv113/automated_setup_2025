@@ -41,9 +41,9 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
-## 1c. Snapshot management (recommended: snapper + grub-btrfs)
+## 1c. Snapshot management (recommended: snapper; optional grub integration)
 
-Use `snapper` as the snapshot manager and `grub-btrfs` for boot menu integration.
+Use `snapper` as the primary snapshot manager. `grub-btrfs` is optional when available in your apt repositories.
 
 1. Confirm filesystem layout first:
 ```bash
@@ -56,15 +56,25 @@ Expected:
 - `/boot` is `ext4`
 - `/boot/efi` is `vfat`
 
-2. Install tooling:
+2. Install `snapper`:
 ```bash
 sudo apt update
-sudo apt install -y snapper grub-btrfs
+sudo apt install -y snapper
 ```
 
 Optional GUI:
 ```bash
 sudo apt install -y btrfs-assistant
+```
+
+Optional boot menu integration (`grub-btrfs`) if package exists:
+```bash
+if apt-cache show grub-btrfs >/dev/null 2>&1; then
+  sudo apt install -y grub-btrfs
+  sudo systemctl enable --now grub-btrfsd
+else
+  echo "grub-btrfs package not available in current apt repos; continue with snapper-only workflow."
+fi
 ```
 
 3. Create `snapper` configs:
@@ -73,28 +83,23 @@ sudo snapper -c root create-config /
 sudo snapper -c home create-config /home
 ```
 
-4. Enable GRUB integration service:
-```bash
-sudo systemctl enable --now grub-btrfsd
-```
-
-5. Create baseline "factory" snapshots:
+4. Create baseline "factory" snapshots:
 ```bash
 STAMP="$(date +%Y%m%d-%H%M)"
 sudo snapper -c root create --type single --description "factory-root-${STAMP}"
 sudo snapper -c home create --type single --description "factory-home-${STAMP}"
 ```
 
-6. Verify:
+5. Verify:
 ```bash
 sudo snapper -c root list
 sudo snapper -c home list
-sudo systemctl status grub-btrfsd --no-pager
+systemctl status grub-btrfsd --no-pager 2>/dev/null || true
 ```
 
-7. Rollback workflow (high level):
-- Boot into a `grub-btrfs` snapshot entry for verification.
-- Perform rollback with `snapper rollback` on the target config.
+6. Rollback workflow (high level):
+- If `grub-btrfs` is installed: boot into a snapshot entry for verification, then rollback.
+- If `grub-btrfs` is not installed: rollback from a root shell/live environment with `snapper rollback`.
 - Reboot and confirm system state.
 
 Safety note:
