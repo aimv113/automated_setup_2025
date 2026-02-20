@@ -213,10 +213,34 @@ done
 After finding `camera_iface`, assign camera IP:
 
 ```bash
-sudo ip addr flush dev <camera_iface>
-sudo ip addr add 192.168.1.200/24 dev <camera_iface>
-sudo ip link set <camera_iface> up
-ping -c 3 -I <camera_iface> 192.168.1.100
+CAM_IFACE="ens3f0"   # expected camera interface; change if needed
+CAM_IP="192.168.1.100"
+INTERNET_IFACE="ens21f0"  # expected internet interface; change if needed
+
+sudo ip addr flush dev "$CAM_IFACE"
+sudo ip addr add 192.168.1.200/24 dev "$CAM_IFACE"
+sudo ip link set "$CAM_IFACE" up
+ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
+
+# Persist with netplan (NetworkManager renderer)
+sudo tee /etc/netplan/99-machine-network.yaml > /dev/null <<EOF
+network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    ${INTERNET_IFACE}:
+      dhcp4: true
+    ${CAM_IFACE}:
+      dhcp4: false
+      addresses:
+        - 192.168.1.200/24
+      optional: true
+EOF
+
+sudo netplan generate && sudo netplan apply
+sleep 2
+ip -br addr show "$CAM_IFACE"
+ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
 ```
 
 ### A3. Network config file locations
