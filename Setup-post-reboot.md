@@ -35,157 +35,77 @@ cd ~/automated_setup_2025
 
 **Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
 
-**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, use `wifi-sec.key-mgmt none` (no password). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
+**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, unblocks WiFi, enables radio, sets device managed/up, recreates the two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10), sets open security mode with `wifi-sec.key-mgmt none`, then attempts a non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
 
 For dedicated WiFi recovery (smart adapter/kernel detection + interactive strategy confirmation), use: [WIFI_SETUP.md](WIFI_SETUP.md).
 
 **Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
 
-### WiFi verification and troubleshooting (terminal-first)
+### Network sanity checks (WiFi + camera)
 
-Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
+Use this after `post-reboot-verify.yml`. Keep this section check-only; manual recovery commands are in **Appendix A** below.
 
-1. Set WiFi device ready (`wls2` is an example; replace with your WiFi interface):
+Set variables first:
 ```bash
-which nmcli rfkill iw
-ip -br link
-iw dev
+IFACE="wls2"        # replace with your WiFi interface
+SSID="OFFICEGST"    # replace if you used a different machine_wifi_ssid
+CAM_IFACE="ens3f0"  # replace with your camera ethernet interface
+CAM_IP="192.168.1.100"
 ```
 
-2. Recreate clean open-network profiles for `OFFICEGST` (2.4GHz preferred):
+1. Check WiFi radio, device state, and visible networks:
 ```bash
-sudo nmcli -t -f NAME connection show | grep -E '^OFFICEGST' | xargs -r -I{} sudo nmcli connection delete "{}"
-
-sudo nmcli connection add \
-  type wifi ifname wls2 \
-  con-name OFFICEGST-2.4GHz \
-  ssid OFFICEGST \
-  802-11-wireless.band bg \
-  connection.autoconnect yes \
-  connection.autoconnect-priority 100 \
-  ipv4.method auto \
-  ipv6.method auto
-sudo nmcli connection modify OFFICEGST-2.4GHz wifi-sec.key-mgmt none
-
-sudo nmcli connection add \
-  type wifi ifname wls2 \
-  con-name OFFICEGST-5GHz \
-  ssid OFFICEGST \
-  802-11-wireless.band a \
-  connection.autoconnect yes \
-  connection.autoconnect-priority 10 \
-  ipv4.method auto \
-  ipv6.method auto
-sudo nmcli connection modify OFFICEGST-5GHz wifi-sec.key-mgmt none
-```
-
-3. Try connection and verify status:
-```bash
-sudo nmcli connection up OFFICEGST-2.4GHz || sudo nmcli connection up OFFICEGST-5GHz
-nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,DEVICE connection show | grep OFFICEGST
 nmcli radio wifi
-nmcli device status | grep wls2
-sudo rfkill unblock all
-sudo nmcli radio wifi on
-sudo ip link set wls2 up
-nmcli device set wls2 managed yes
-nmcli dev wifi rescan
-```
-nmcli device connect wls2
-```
-
-4. If still disconnected:
-```bash
-nmcli dev wifi rescan
-nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E '^\*|IN-USE|OFFICEGST'
-```
-
-5. Validate open-network profile settings (no security fields, no BSSID pin):
-```bash
-nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless.band,802-11-wireless.bssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk connection show "OFFICEGST-2.4GHz"
-nmcli -f connection.id,802-11-wireless.ssid,802-11-wireless.band,802-11-wireless.bssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk connection show "OFFICEGST-5GHz"
-```
-
-6. If old/incorrect profiles exist, recreate clean open-network profiles:
-```bash
-IFACE="wls2"
-SSID="OFFICEGST"
-nmcli -t -f NAME connection show | grep -qx "${SSID}-2.4GHz" && nmcli connection delete "${SSID}-2.4GHz" || true
-nmcli -t -f NAME connection show | grep -qx "${SSID}-5GHz" && nmcli connection delete "${SSID}-5GHz" || true
-nmcli -t -f NAME connection show | grep -qx "${SSID}" && nmcli connection delete "${SSID}" || true
-nmcli connection add type wifi ifname "${IFACE}" con-name "${SSID}-2.4GHz" ssid "${SSID}" 802-11-wireless.band bg connection.autoconnect yes connection.autoconnect-priority 100 ipv4.method auto ipv6.method auto
-nmcli connection add type wifi ifname "${IFACE}" con-name "${SSID}-5GHz" ssid "${SSID}" 802-11-wireless.band a connection.autoconnect yes connection.autoconnect-priority 10 ipv4.method auto ipv6.method auto
-nmcli connection modify "${SSID}-2.4GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
-nmcli connection modify "${SSID}-5GHz" 802-11-wireless-security.key-mgmt "" 802-11-wireless-security.psk ""
-nmcli connection up "${SSID}-2.4GHz" || nmcli connection up "${SSID}-5GHz"
-```
-
-7. Confirm link + IP + route:
-```bash
-iw dev wls2 link
-ip a show wls2
-ip route
-```
-
-8. Quick failure triage if still not connected:
-```bash
 nmcli device status
-nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show wls2
-sudo journalctl -u NetworkManager -b --no-pager | tail -n 120
+nmcli dev wifi rescan
+nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E "^\*|IN-USE|$SSID"
 ```
 
----
-
-## 1d. Camera interface manual recovery (only if warning appears)
-
+2. Check WiFi autoconnect profiles and priority:
 ```bash
-sudo tee /etc/netplan/99-machine-network.yaml > /dev/null << 'EOF'
-# Single netplan for machine: NetworkManager renderer, ethernet (DHCP + camera static).
-# WiFi is configured via nmcli (connect automatically to machine_wifi_ssid, default OFFICEGST).
-# Generated by post-reboot-verify. Replaces 50-cloud-init to avoid conflicts.
-network:
-  version: 2
-  renderer: NetworkManager
-  ethernets:
-    ens21f0:
-      dhcp4: true
-
-    ens3f0:
-      dhcp4: false
-      addresses:
-        - 192.168.1.200/24
-      optional: true
-EOF
-sudo netplan apply && sleep 2 && ip addr show ens3f0 && ping -c 3 -I ens3f0 192.168.1.100
+nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,DEVICE connection show | grep "$SSID"
 ```
+
+3. Check active WiFi connection and IP:
+```bash
+nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show "$IFACE"
+iw dev "$IFACE" link
+```
+
+4. Check camera interface and camera reachability:
+```bash
+ip -br addr show "$CAM_IFACE"
+ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
+```
+
+If any check fails, go to **Appendix A. Networking manual fixes**.
 
 ---
 ## 6. Touch screen (if applicable)
 
-- [ ] Install packages and add Xorg config:
+- [ ] Verify base touchscreen setup from main playbook:
 
 ```bash
-sudo apt update
-sudo apt install xserver-xorg-input-libinput xserver-xorg-input-evdev xserver-xorg-input-multitouch xinput-calibrator -y
-sudo mkdir -p /etc/X11/xorg.conf.d
-sudo tee /etc/X11/xorg.conf.d/99-touchscreen.conf > /dev/null <<'EOF'
-Section "InputClass"
-    Identifier "Touchscreen"
-    MatchProduct "eGalax Inc. USB TouchController"
-    MatchDevicePath "/dev/input/event*"
-    Driver "evdev"
-    Option "Calibration" "0 4095 0 4095"
-    Option "InvertX" "0"
-    Option "InvertY" "0"
-EndSection
-EOF
+dpkg -l | grep -E 'xserver-xorg-input-(libinput|evdev|multitouch)|xinput-calibrator'
+ls -l /etc/X11/xorg.conf.d/99-touchscreen.conf
+xinput list | grep -i 'egalax\|touch'
 ```
 
-**If you use server + xinit (no GDM):** Skip the GDM steps (WaylandEnable in `/etc/gdm3/custom.conf` and `sudo systemctl restart gdm`). The config above is applied when X starts via xinit.
+**If you use server + xinit (no GDM):** Skip the GDM steps (WaylandEnable in `/etc/gdm3/custom.conf` and `sudo systemctl restart gdm`). `/etc/X11/xorg.conf.d/99-touchscreen.conf` is applied when X starts via xinit.
 
 **If you use GDM:** Run `sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf` and `sudo systemctl restart gdm`.
 
-- [ ] Verify: `xinput list-props "$(xinput list | grep -i 'egalax' | grep -o 'id=[0-9]*' | cut -d= -f2)" | grep -E "Evdev Axis Calibration|Driver"`
+- [ ] If touch offset is wrong, run calibrator:
+
+```bash
+sudo xinput_calibrator
+```
+
+Then update calibration values in:
+`/etc/X11/xorg.conf.d/99-touchscreen.conf`
+
+- [ ] Validate calibration values:
+`xinput list-props "$(xinput list | grep -i 'egalax' | grep -o 'id=[0-9]*' | cut -d= -f2)" | grep -E "Evdev Axis Calibration|Driver"`
 - [ ] Run touch test: clone and run [touch-test](https://github.com/aimv113/touch-test/) to confirm touch tracking behavior.
 
 ---
@@ -242,3 +162,85 @@ sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
 ## Boot mode: minimal X / king_detector
 
 If you chose **minimal X** at playbook start, the playbook installed `xdotool` and `x11-xserver-utils`. Your crane-display service and scripts live in the king_detector repo (not in this repo). See SETUP_WORKFLOW.md for the full flow and both paths (GNOME on boot vs minimal X).
+
+---
+
+## Appendix A. Networking manual fixes (only if checks fail)
+
+### A1. WiFi manual reset/recreate (open SSID)
+
+```bash
+IFACE="wls2"      # replace with your WiFi interface
+SSID="OFFICEGST"  # replace with your SSID
+
+sudo rfkill unblock all
+sudo nmcli radio wifi on
+sudo ip link set "$IFACE" up
+sudo nmcli device set "$IFACE" managed yes
+
+sudo nmcli -t -f NAME connection show | grep -E "^${SSID}" | xargs -r -I{} sudo nmcli connection delete "{}"
+
+sudo nmcli connection add \
+  type wifi ifname "$IFACE" \
+  con-name "${SSID}-2.4GHz" \
+  ssid "$SSID" \
+  802-11-wireless.band bg \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 100 \
+  ipv4.method auto \
+  ipv6.method auto
+sudo nmcli connection modify "${SSID}-2.4GHz" wifi-sec.key-mgmt none
+
+sudo nmcli connection add \
+  type wifi ifname "$IFACE" \
+  con-name "${SSID}-5GHz" \
+  ssid "$SSID" \
+  802-11-wireless.band a \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 10 \
+  ipv4.method auto \
+  ipv6.method auto
+sudo nmcli connection modify "${SSID}-5GHz" wifi-sec.key-mgmt none
+
+sudo nmcli connection up "${SSID}-2.4GHz" || sudo nmcli connection up "${SSID}-5GHz"
+```
+
+### A2. Camera NIC manual recovery
+
+```bash
+CAM_IP="192.168.1.100"
+for i in $(ls /sys/class/net); do
+  [ "$i" = "lo" ] && continue
+  [ -d "/sys/class/net/$i/wireless" ] && continue
+  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
+  [ -e "/sys/class/net/$i/device" ] || continue
+  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && continue
+  sudo ip link set "$i" up
+  sudo ip addr add 192.168.1.254/24 dev "$i" 2>/dev/null || true
+  ping -c 1 -W 2 -I "$i" "$CAM_IP" >/dev/null 2>&1 && echo "camera_iface=$i"
+  sudo ip addr del 192.168.1.254/24 dev "$i" 2>/dev/null || true
+done
+```
+
+After finding `camera_iface`, assign camera IP:
+
+```bash
+sudo ip addr flush dev <camera_iface>
+sudo ip addr add 192.168.1.200/24 dev <camera_iface>
+sudo ip link set <camera_iface> up
+ping -c 3 -I <camera_iface> 192.168.1.100
+```
+
+### A3. Network config file locations
+
+```bash
+# Primary files to inspect/edit (50-cloud-init may be absent by design)
+ls -l /etc/netplan/01-network-manager.yaml /etc/netplan/99-machine-network.yaml /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
+
+# Current NetworkManager profiles
+nmcli -f NAME,UUID,TYPE,DEVICE connection show
+
+# Re-apply the full post-reboot network automation
+cd ~/automated_setup_2025
+./run-playbook-smart.sh post-reboot-verify.yml -vv
+```

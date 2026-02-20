@@ -32,7 +32,7 @@ This document describes the full setup flow, what is automated, and what stays m
 
 - **Pre-connection:** ZeroTier (correct URL: zerotier.com), SSH enable, add key to `authorized_keys`.
 - **SSH key reminder:** Send keys at Ubuntu install or add Terminus key manually; playbook can deploy keys from `ssh-public-keys.txt`.
-- **Post-reboot:** Checklist (verify playbook, Firefox, crontab, VNC, VS Code, data folders, touch screen, camera settings); boot mode (GNOME vs minimal X) noted.
+- **Post-reboot:** Checklist (verify playbook, Firefox, crontab, VNC, VS Code, data folders, camera settings); touch screen is mostly verify/calibrate only.
 - **Boot mode:** Choice at playbook start; when minimal X, playbook installs xdotool and x11-xserver-utils.
 
 ---
@@ -44,6 +44,7 @@ This document describes the full setup flow, what is automated, and what stays m
 - Git: user.name, user.email, SSH default for GitHub (`url.insteadOf`), standard `~/.ssh/id_ed25519` key generated/displayed if missing; you add the key to GitHub once.
 - Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`, `data/ad_hoc/`, `data/ad_hoc/jpg/`, `data/ad_hoc/video/` under `~/` (post-reboot-verify).
 - Network info (MACs, IPs) printed near playbook completion for recording.
+- Touchscreen base setup near end of `ubuntu-setup.yml` (packages + `/etc/X11/xorg.conf.d/99-touchscreen.conf`).
 - **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager, `rfkill`, and `iw`, then writes a single netplan with renderer NetworkManager (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …; optional WiFi SSID). For open WiFi, set `wifi-sec.key-mgmt none` and do not pin BSSID. Removes 50-cloud-init to avoid conflicts.
 - **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
 - No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).

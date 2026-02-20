@@ -118,6 +118,7 @@ If WiFi is still not ready after the normal flow, run the dedicated WiFi recover
 **Prompt timing notes:**
 - If required kernel is not active yet, playbook exits before most interactive prompts.
 - Prompt for **Healthchecks.io** ping URL (optional; press Enter to skip) happens near the end of the run.
+- **Touchscreen base setup** (packages + `/etc/X11/xorg.conf.d/99-touchscreen.conf`) runs near the end, before network info is shown.
 - **Network info** (Ethernet and WiFi MACs, IPs) is displayed near completion so WiFi/interface state is final.
 - Prompt for **boot mode:** 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
 - Prompt for **deployment mode** (`production` vs `test/check`) and early **WiFi readiness decision**.

@@ -413,7 +413,15 @@
       failed_when: false
       changed_when: false
 
-    - name: 41/53 Ensure WiFi radio is enabled (non-fatal)
+    - name: 41/53 Ensure WiFi is unblocked (non-fatal)
+      command: rfkill unblock all
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
+    - name: 42/53 Ensure WiFi radio is enabled (non-fatal)
       command: nmcli radio wifi on
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
@@ -421,7 +429,26 @@
       failed_when: false
       changed_when: false
 
-    - name: 42/53 Bring WiFi device up via NetworkManager (non-fatal)
+    - name: 42a/53 Bring WiFi link up (non-fatal)
+      command: ip link set "{{ machine_wifi_interface }}" up
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
+    - name: 42b/53 Remove existing WiFi profiles for SSID (non-fatal)
+      shell: |
+        for prof in "{{ machine_wifi_ssid }}-2.4GHz" "{{ machine_wifi_ssid }}-5GHz" "{{ machine_wifi_ssid }}"; do
+          nmcli -t -f NAME connection show | grep -qx "$prof" && nmcli connection delete "$prof" || true
+        done
+      when: >
+        machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
+        and machine_wifi_interface is defined and machine_wifi_interface | length > 0
+      failed_when: false
+      changed_when: false
+
+    - name: 42c/53 Bring WiFi device up via NetworkManager (non-fatal)
       command: nmcli device connect "{{ machine_wifi_interface }}"
       when: >
         machine_wifi_ssid is defined and machine_wifi_ssid | length > 0
@@ -472,11 +499,10 @@
         and machine_wifi_interface is defined and machine_wifi_interface | length > 0
       failed_when: false
 
-    - name: 47/53 Clear WiFi security fields for open network profiles
+    - name: 47/53 Set open-WiFi security mode for open network profiles
       command: >
         nmcli connection modify "{{ item }}"
-        802-11-wireless-security.key-mgmt ""
-        802-11-wireless-security.psk ""
+        wifi-sec.key-mgmt none
       loop:
         - "{{ machine_wifi_ssid }}-2.4GHz"
         - "{{ machine_wifi_ssid }}-5GHz"

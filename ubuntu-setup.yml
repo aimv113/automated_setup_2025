@@ -2172,7 +2172,48 @@
         echo "" >> {{ log_file }}
 
     # ==========================================================
-    # 17b. NETWORK INFO (for user to record, late in run)
+    # 17b. TOUCHSCREEN BASE SETUP (late in run, before network info)
+    # ==========================================================
+    - name: 233a/243 Install touchscreen support packages (if applicable)
+      apt:
+        name:
+          - xserver-xorg-input-libinput
+          - xserver-xorg-input-evdev
+          - xserver-xorg-input-multitouch
+          - xinput-calibrator
+        state: present
+
+    - name: 233b/243 Ensure Xorg config directory exists for touchscreen config
+      file:
+        path: /etc/X11/xorg.conf.d
+        state: directory
+        mode: '0755'
+
+    - name: 233c/243 Write touchscreen Xorg config (eGalax defaults)
+      copy:
+        dest: /etc/X11/xorg.conf.d/99-touchscreen.conf
+        mode: '0644'
+        content: |
+          Section "InputClass"
+              Identifier "Touchscreen"
+              MatchProduct "eGalax Inc. USB TouchController"
+              MatchDevicePath "/dev/input/event*"
+              Driver "evdev"
+              Option "Calibration" "0 4095 0 4095"
+              Option "InvertX" "0"
+              Option "InvertY" "0"
+          EndSection
+
+    - name: 233d/243 Log touchscreen base setup
+      shell: |
+        echo "===========================================================" >> {{ log_file }}
+        echo "17b. TOUCHSCREEN BASE SETUP - $(date)" >> {{ log_file }}
+        echo "===========================================================" >> {{ log_file }}
+        echo "Installed touchscreen input packages and wrote /etc/X11/xorg.conf.d/99-touchscreen.conf" >> {{ log_file }}
+        echo "" >> {{ log_file }}
+
+    # ==========================================================
+    # 17c. NETWORK INFO (for user to record, late in run)
     # ==========================================================
     - name: 234/243 Gather network interface info for display
       shell: |
@@ -2209,6 +2250,7 @@
         echo "- Docker + NVIDIA runtime ready" >> {{ log_file }}
         echo "- Tailscale and RealVNC installed" >> {{ log_file }}
         echo "- Git configured (SSH for GitHub)" >> {{ log_file }}
+        echo "- Touchscreen base packages/config installed (if applicable)" >> {{ log_file }}
         {% if healthchecks_url != 'SKIPPED' %}
         echo "- Healthcheck active (every 5 min): {{ healthchecks_url }}" >> {{ log_file }}
         {% else %}
@@ -2234,6 +2276,7 @@
           - Docker + NVIDIA runtime ready
           - Tailscale and RealVNC installed
           - Git configured (SSH for GitHub)
+          - Touchscreen base packages/config installed (if applicable)
           {% if healthchecks_url != 'SKIPPED' %}
           - Healthcheck active (every 5 min): {{ healthchecks_url }}
           {% else %}
