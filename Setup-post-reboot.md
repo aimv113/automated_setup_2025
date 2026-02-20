@@ -61,9 +61,11 @@ nmcli radio all
 3. If blocked/down, un-block and bring device up:
 ```bash
 sudo rfkill unblock all
-nmcli radio wifi on
+sudo nmcli radio wifi on
 sudo ip link set wls2 up
 nmcli device set wls2 managed yes
+nmcli dev wifi rescan
+```
 nmcli device connect wls2
 ```
 
