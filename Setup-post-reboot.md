@@ -52,17 +52,17 @@ Use **snapper** only for btrfs snapshots. Do the steps below in order. Do **not*
 
 ### Step 1: Clean state (only if you tried snapper or manual snapshots before)
 
-If you already have `.snapshots` or snapper configs from earlier attempts, reset first so the next steps don’t fail with “already exists” or “subvolume already covered”.
+If you already have `.snapshots` or snapper configs from earlier attempts, you must do **all** of the following. If you only remove config files (or only remove `.snapshots`), create-config will keep saying “config already exists.”
 
 ```bash
-# See what exists
-sudo snapper list-configs
-ls -la /.snapshots /home/.snapshots 2>/dev/null || true
-
-# Remove snapper configs (use the names list-configs showed, e.g. root and home_vol)
+# 1. Remove config files (use the names list-configs showed)
 sudo rm -f /etc/snapper/configs/root /etc/snapper/configs/home /etc/snapper/configs/home_vol
 
-# Remove .snapshots: directory → rm -rf; subvolume → btrfs subvolume delete
+# 2. Restart snapperd so it drops its cached list of configs
+sudo systemctl restart snapperd
+
+# 3. Remove .snapshots (snapper treats existing .snapshots as "config exists")
+#    If it's a subvolume: btrfs deletes it. If it's a directory: rm -rf.
 sudo btrfs subvolume show /.snapshots 2>/dev/null && sudo btrfs subvolume delete /.snapshots || sudo rm -rf /.snapshots
 sudo btrfs subvolume show /home/.snapshots 2>/dev/null && sudo btrfs subvolume delete /home/.snapshots || sudo rm -rf /home/.snapshots
 ```
