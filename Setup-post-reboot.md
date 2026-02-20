@@ -43,65 +43,98 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 ## 1c. Snapshot management (snapper)
 
-Use `snapper` for btrfs snapshot management.
+Use **snapper** only for btrfs snapshots. Do the steps below in order. Do **not** create `.snapshots` by hand or use raw `btrfs subvolume snapshot` for root/home—snapper manages its own `.snapshots` subvolumes.
 
-1. Confirm filesystem layout first:
+### Prerequisites
+
+- `/` and `/home` must be btrfs (check with `findmnt -no TARGET,FSTYPE / /home`).
+- If you use a **swapfile** on the same btrfs subvolume as `/`, root snapshots can fail. Prefer a swap partition or turn swap off before creating root snapshots.
+
+### Step 1: Clean state (only if you tried snapper or manual snapshots before)
+
+If you already have `.snapshots` or snapper configs from earlier attempts, reset first so the next steps don’t fail with “already exists” or “subvolume already covered”.
+
 ```bash
-findmnt -no TARGET,FSTYPE / /home /data /boot /boot/efi
+# See what exists
+sudo snapper list-configs
+ls -la /.snapshots /home/.snapshots 2>/dev/null || true
+
+# Remove snapper configs (use the names list-configs showed, e.g. root and home_vol)
+sudo rm -f /etc/snapper/configs/root /etc/snapper/configs/home /etc/snapper/configs/home_vol
+
+# Remove .snapshots: directory → rm -rf; subvolume → btrfs subvolume delete
+sudo btrfs subvolume show /.snapshots 2>/dev/null && sudo btrfs subvolume delete /.snapshots || sudo rm -rf /.snapshots
+sudo btrfs subvolume show /home/.snapshots 2>/dev/null && sudo btrfs subvolume delete /home/.snapshots || sudo rm -rf /home/.snapshots
 ```
 
-Expected:
-- `/` and `/home` are `btrfs`
-- `/data` is `ext4`
-- `/boot` is `ext4`
-- `/boot/efi` is `vfat`
+Then continue from Step 2.
 
-2. Install `snapper`:
+### Step 2: Install snapper
+
 ```bash
 sudo apt update
 sudo apt install -y snapper
 ```
 
-Optional GUI:
-```bash
-sudo apt install -y btrfs-assistant
-```
+Optional GUI: `sudo apt install -y btrfs-assistant`
 
-3. Create `snapper` configs:
+### Step 3: Create configs
+
 ```bash
 sudo snapper -c root create-config /
 sudo snapper -c home create-config /home
 ```
 
-If **create-config** fails:
-- **".snapshots already exists"** – A leftover `.snapshots` is present. For root: if `/.snapshots` is a normal directory, remove it with `sudo rm -rf /.snapshots` then run `create-config /` again. If it is a btrfs subvolume, use `sudo btrfs subvolume delete /.snapshots` (or delete by ID). For home, remove `/home/.snapshots` the same way if needed, then retry.
-- **"config already exists"** for `/home` but `sudo snapper list-configs` does not show `home` – Create the home config under another name, e.g. `sudo snapper -c home_vol create-config /home`, and use that name (`home_vol`) in all later commands below (create, list, rollback).
+If the **home** command fails with **"config already exists"** or **"subvolume already covered"**, create the home config under a different name and use that name everywhere below:
 
-4. Create baseline "factory" snapshots (use your home config name, e.g. `home` or `home_vol`):
+```bash
+sudo snapper -c home_vol create-config /home
+```
+
+Check which configs you have (you will need the home config name for the next steps):
+
+```bash
+sudo snapper list-configs
+```
+
+Example output: `root | /` and either `home | /home` or `home_vol | /home`. Use the **exact** name shown for the home config (e.g. `home` or `home_vol`) in all following commands.
+
+### Step 4: Create factory snapshots
+
+Replace `HOME_CONFIG` with the home config name from `list-configs` (e.g. `home` or `home_vol`).
+
 ```bash
 STAMP="$(date +%Y%m%d-%H%M)"
 sudo snapper -c root create --type single --description "factory-root-${STAMP}"
-sudo snapper -c home create --type single --description "factory-home-${STAMP}"
-# If you used home_vol: replace 'home' with 'home_vol' in the second line
+sudo snapper -c HOME_CONFIG create --type single --description "factory-home-${STAMP}"
 ```
 
-5. Verify:
+Example if your home config is `home_vol`:
+
+```bash
+STAMP="$(date +%Y%m%d-%H%M)"
+sudo snapper -c root create --type single --description "factory-root-${STAMP}"
+sudo snapper -c home_vol create --type single --description "factory-home-${STAMP}"
+```
+
+### Step 5: Verify
+
+Again use your home config name for the second line:
+
 ```bash
 sudo snapper -c root list
-sudo snapper -c home list
-# If you used home_vol: use -c home_vol for the second command
+sudo snapper -c HOME_CONFIG list
 ```
 
-6. Rollback workflow (high level):
-- From a root shell or live environment, run `snapper rollback` (use `-c root` or `-c home` / `-c home_vol` as appropriate), then reboot and confirm system state.
+### Step 6: Rollback (when needed)
 
-Safety note:
-- If swap is an active swapfile on the same btrfs subvolume as `/`, all snapshot tools (including `snapper`) can fail on root snapshots.
-- Prefer a swap partition, or a dedicated non-snapshotted swap subvolume/mount.
+From a root shell or live system: `sudo snapper -c root rollback` or `sudo snapper -c HOME_CONFIG rollback`, then reboot. Use the same config names as in list-configs.
 
-Restore scope reminder:
-- Restored by btrfs snapshots: `/` and `/home`
-- Not restored by btrfs snapshots: `/data` and separate `/boot`
+### Summary
+
+- **Snapper only**—no grub-btrfs; rollback is from root/live with `snapper rollback`.
+- **Config names:** Always use the names from `sudo snapper list-configs`. Using a name that doesn’t exist (e.g. `-c home` when you have `home_vol`) causes “Unknown config.”
+- **Restored by snapshots:** `/` and `/home`. **Not** restored: `/data`, `/boot`.
 
 ### WiFi verification and troubleshooting (terminal-first)
 

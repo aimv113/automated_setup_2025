@@ -108,7 +108,7 @@ What does not get restored by btrfs root/home snapshots:
 Practical recommendation:
 1. After first clean build, create a named baseline snapshot for both `@` and `@home` (for example `factory-YYYYMMDD`).
 2. Keep `/boot` backup notes/files as part of recovery docs.
-3. Use `snapper` as the snapshot manager (see `Setup-post-reboot.md` section 1c).
+3. Use `snapper` as the snapshot manager; follow the full procedure in **Setup-post-reboot.md** section 1c (do not create `.snapshots` manually or use raw `btrfs subvolume snapshot` for `/` or `/home`).
 
 ## `/home` strategy for this project
 
