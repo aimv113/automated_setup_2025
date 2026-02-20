@@ -61,14 +61,40 @@ Expected:
 sudo mkdir -p /.snapshots
 ```
 
-3. Create read-only baseline snapshots:
+3. Create a read-only baseline snapshot for `/` (handles active swapfiles):
 ```bash
 STAMP="$(date +%Y%m%d-%H%M)"
+
+# btrfs cannot snapshot a subvolume that contains an active swapfile.
+SWAPFILES="$(swapon --show=NAME,TYPE --noheadings | awk '$2 == \"file\" {print $1}')"
+for sf in $SWAPFILES; do
+  sudo swapoff "$sf"
+done
+
 sudo btrfs subvolume snapshot -r / "/.snapshots/root-factory-${STAMP}"
-sudo btrfs subvolume snapshot -r /home "/.snapshots/home-factory-${STAMP}"
+
+for sf in $SWAPFILES; do
+  sudo swapon "$sf"
+done
 ```
 
-4. Verify snapshots exist:
+4. Create a read-only `/home` snapshot (same-filesystem safe):
+```bash
+ROOT_SRC="$(findmnt -n -o SOURCE /)"
+HOME_SRC="$(findmnt -n -o SOURCE /home)"
+HOME_FSTYPE="$(findmnt -n -o FSTYPE /home)"
+
+if [ "$HOME_FSTYPE" != "btrfs" ]; then
+  echo "/home is not btrfs ($HOME_FSTYPE). Skipping /home snapshot."
+elif [ "$HOME_SRC" = "$ROOT_SRC" ]; then
+  sudo btrfs subvolume snapshot -r /home "/.snapshots/home-factory-${STAMP}"
+else
+  sudo mkdir -p /home/.snapshots
+  sudo btrfs subvolume snapshot -r /home "/home/.snapshots/home-factory-${STAMP}"
+fi
+```
+
+5. Verify snapshots exist:
 ```bash
 sudo btrfs subvolume list /
 sudo ls -lah /.snapshots
@@ -269,6 +295,7 @@ EOF
 **If you use GDM:** Run `sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf` and `sudo systemctl restart gdm`.
 
 - [ ] Verify: `xinput list-props "$(xinput list | grep -i 'egalax' | grep -o 'id=[0-9]*' | cut -d= -f2)" | grep -E "Evdev Axis Calibration|Driver"`
+- [ ] Run touch test: clone and run [touch-test](https://github.com/aimv113/touch-test/) to confirm touch tracking behavior.
 
 ---
 
