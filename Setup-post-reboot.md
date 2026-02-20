@@ -35,7 +35,7 @@ cd ~/automated_setup_2025
 
 **Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
 
-**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, security fields are cleared (no password/key-mgmt values). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
+**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, then creates two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10). For open SSIDs, use `wifi-sec.key-mgmt none` (no password). It also enables WiFi radio, sets the device managed/up, and attempts non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
 
 For dedicated WiFi recovery (smart adapter/kernel detection + interactive strategy confirmation), use: [WIFI_SETUP.md](WIFI_SETUP.md).
 
@@ -45,21 +45,46 @@ For dedicated WiFi recovery (smart adapter/kernel detection + interactive strate
 
 Use this after `post-reboot-verify.yml` if WiFi does not come up immediately.
 
-1. Confirm tools and interface:
+1. Set WiFi device ready (`wls2` is an example; replace with your WiFi interface):
 ```bash
 which nmcli rfkill iw
 ip -br link
 iw dev
 ```
 
-2. Check soft/hard block and radio state:
+2. Recreate clean open-network profiles for `OFFICEGST` (2.4GHz preferred):
 ```bash
-rfkill list
-nmcli radio all
+sudo nmcli -t -f NAME connection show | grep -E '^OFFICEGST' | xargs -r -I{} sudo nmcli connection delete "{}"
+
+sudo nmcli connection add \
+  type wifi ifname wls2 \
+  con-name OFFICEGST-2.4GHz \
+  ssid OFFICEGST \
+  802-11-wireless.band bg \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 100 \
+  ipv4.method auto \
+  ipv6.method auto
+sudo nmcli connection modify OFFICEGST-2.4GHz wifi-sec.key-mgmt none
+
+sudo nmcli connection add \
+  type wifi ifname wls2 \
+  con-name OFFICEGST-5GHz \
+  ssid OFFICEGST \
+  802-11-wireless.band a \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 10 \
+  ipv4.method auto \
+  ipv6.method auto
+sudo nmcli connection modify OFFICEGST-5GHz wifi-sec.key-mgmt none
 ```
 
-3. If blocked/down, un-block and bring device up:
+3. Try connection and verify status:
 ```bash
+sudo nmcli connection up OFFICEGST-2.4GHz || sudo nmcli connection up OFFICEGST-5GHz
+nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,DEVICE connection show | grep OFFICEGST
+nmcli radio wifi
+nmcli device status | grep wls2
 sudo rfkill unblock all
 sudo nmcli radio wifi on
 sudo ip link set wls2 up
@@ -69,7 +94,7 @@ nmcli dev wifi rescan
 nmcli device connect wls2
 ```
 
-4. Scan and confirm the expected SSID is visible:
+4. If still disconnected:
 ```bash
 nmcli dev wifi rescan
 nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E '^\*|IN-USE|OFFICEGST'
@@ -107,7 +132,6 @@ ip route
 nmcli device status
 nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show wls2
 sudo journalctl -u NetworkManager -b --no-pager | tail -n 120
-sudo journalctl -k -b --no-pager | grep -Ei 'wlan|wifi|rfkill|firmware|8812|88..au|rtw88|usb' | tail -n 150
 ```
 
 ---
