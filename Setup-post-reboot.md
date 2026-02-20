@@ -51,29 +51,17 @@ IFACE="wls2"        # replace with your WiFi interface
 SSID="OFFICEGST"    # replace if you used a different machine_wifi_ssid
 CAM_IFACE="ens3f0"  # replace with your camera ethernet interface
 CAM_IP="192.168.1.100"
-```
-
-1. Check WiFi radio, device state, and visible networks:
-```bash
+# Check WiFi radio, device state, and visible networks:
 nmcli radio wifi
 nmcli device status
 nmcli dev wifi rescan
 nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E "^\*|IN-USE|$SSID"
-```
-
-2. Check WiFi autoconnect profiles and priority:
-```bash
+# Check WiFi autoconnect profiles and priority:
 nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,DEVICE connection show | grep "$SSID"
-```
-
-3. Check active WiFi connection and IP:
-```bash
+# Check active WiFi connection and IP:
 nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show "$IFACE"
 iw dev "$IFACE" link
-```
-
-4. Check camera interface and camera reachability:
-```bash
+# Check camera interface and camera reachability:
 ip -br addr show "$CAM_IFACE"
 ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
 ```
