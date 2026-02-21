@@ -9,6 +9,7 @@
 
   vars:
     auto_reboot_time: "06:00"  # 6 AM daily reboot
+    auto_reboot_after_setup: true
 
     # Local installer storage for reproducible builds
     installers_base_path: "/opt/installers"
@@ -1830,8 +1831,8 @@
           NVIDIA driver and/or kernel modules have been updated.
           The system needs to be rebooted to activate all changes.
 
-          Please reboot when convenient:
-            sudo reboot
+          Automatic reboot is enabled.
+          This machine will reboot ~10 seconds after setup completes.
       when: needs_reboot
 
     # ==========================================================
@@ -2039,7 +2040,7 @@
         echo "Log file: {{ log_file }}" >> {{ log_file }}
         {% if needs_reboot %}
         echo "" >> {{ log_file }}
-        echo "⚠️  Please reboot the system: sudo reboot" >> {{ log_file }}
+        echo "⚠️  Reboot required; auto reboot scheduled ~10 seconds after playbook completion" >> {{ log_file }}
         {% endif %}
 
     - debug:
@@ -2065,9 +2066,17 @@
           Log file saved to: {{ log_file }}
           {% if needs_reboot %}
 
-          ⚠️  Please reboot the system: sudo reboot
+          ⚠️  Reboot required; auto reboot scheduled ~10 seconds after playbook completion
           {% endif %}
           ===================================================================
+
+    - name: (~100%) Schedule reboot to apply setup changes
+      shell: nohup bash -c 'sleep 10 && reboot' > /dev/null 2>&1 &
+      async: 1
+      poll: 0
+      when:
+        - needs_reboot
+        - auto_reboot_after_setup | bool
 
   handlers:
     - name: (~100%) restart docker

@@ -22,7 +22,7 @@ This document describes the full setup flow, what is automated, and what stays m
    - Near completion, it displays **network info** (Ethernet/WiFi MACs, IPs) for final recording.
    - **Git user.name / user.email** for commits on this machine (later in run).
    - **GitHub SSH key** – standard `~/.ssh/id_ed25519` key is generated (if missing) and displayed later in the run; add it to GitHub, then continue.
-8. **Reboot** – `sudo reboot`.
+8. **Auto reboot** – At end of pass 2, `ubuntu-setup.yml` auto-reboots in ~10 seconds (when reboot is required).
 9. **Post-reboot verify** – Run `ansible-playbook post-reboot-verify.yml -K -vv` (must pass). Machine setup is then **complete** (networking and timezone are set by this playbook).
 10. **King_detector setup** – Run the setup script in the king_detector repo (see that repo’s admin/SETUP.md). See [Setup-post-reboot.md](Setup-post-reboot.md) section 9. Then work through the rest of that checklist (camera settings, etc.).
 

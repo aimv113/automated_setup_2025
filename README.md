@@ -24,10 +24,9 @@ The playbook prompts for WiFi strategy (press Enter for option 1: standard in-ke
 **If you need the HWE kernel (option 3 at the WiFi prompt — advanced, RTL8812AU only):**
 Pass 1 installs kernel 6.17 and exits for a reboot. Reboot (`sudo reboot`), then run the playbook again to continue.
 
-After setup completes, reboot and run the verification playbook:
+After setup completes, the machine auto-reboots in ~10 seconds (when required). Then run the verification playbook:
 
 ```bash
-sudo reboot
 ansible-playbook post-reboot-verify.yml -K
 ```
 

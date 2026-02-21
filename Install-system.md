@@ -73,8 +73,6 @@ If WiFi does not come up after the normal flow, use the dedicated recovery playb
 
 ## 6. Reboot and verify
 
-```bash
-sudo reboot
-```
+If needed, `ubuntu-setup.yml` auto-reboots the machine about 10 seconds after completion.
 
 Then follow [Setup-post-reboot.md](Setup-post-reboot.md).
