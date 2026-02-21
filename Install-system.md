@@ -33,6 +33,10 @@ sudo zerotier-cli join 8286ac0e475bfb64
 Approve the new device at [my.zerotier.com](https://my.zerotier.com/network/8286ac0e475bfb64), copy the assigned IP, add it to Terminus.
 
 Update your Mac's hosts file and SSH config:
+```bash
+ip a
+```
+Copy to terminus & mac
 
 ```bash
 sudo nano ~/.ssh/config
