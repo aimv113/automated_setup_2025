@@ -19,6 +19,7 @@ Use GPT + UEFI boot.
 
 <img width="787" height="521" alt="image" src="https://github.com/user-attachments/assets/b2ae2ddd-7991-4ddd-9c0c-81881d3ea7e1" />
 
+See [Install-system.md](Install-system.md)
 
 ## Btrfs subvolume plan
 
