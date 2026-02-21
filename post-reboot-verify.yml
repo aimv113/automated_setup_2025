@@ -244,7 +244,7 @@
       set_fact:
         internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else ((ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first) if (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '')) }}"
 
-    - name: (~40%) Build list of camera interfaces (connected ethernet, no IPv4; exclude internet interface)
+    - name: (~40%) Build list of camera interfaces (connected ethernet, no IPv4 or camera-range IP; exclude internet interface)
       shell: |
         default_if="{{ default_route_iface.stdout }}"
         internet_if="{{ internet_interface | default('') }}"
@@ -252,11 +252,9 @@
           [ -z "$iface" ] && continue
           [ "$iface" = "$default_if" ] && continue
           [ -n "$internet_if" ] && [ "$iface" = "$internet_if" ] && continue
-          # Interface with no IPv4 address = camera NIC (ping -I is unreliable when the
-          # interface has no IP — the kernel borrows another interface's address and ping
-          # can succeed even though this interface has no internet connectivity).
-          has_ipv4=$(ip -4 addr show "$iface" 2>/dev/null | grep -c 'inet ' || true)
-          if [ "$has_ipv4" = "0" ]; then
+          has_ipv4=$(ip -4 addr show "$iface" 2>/dev/null | grep -c "inet " || true)
+          is_camera_ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -c "192\.168\.1\." || true)
+          if [ "$has_ipv4" = "0" ] || [ "$is_camera_ip" != "0" ]; then
             echo "$iface"
           fi
         done
