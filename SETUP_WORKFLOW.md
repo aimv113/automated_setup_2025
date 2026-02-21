@@ -15,7 +15,7 @@ This document describes the full setup flow, what is automated, and what stays m
 7. **Run playbook again (pass 2)** – `ansible-playbook ubuntu-setup.yml -K`.
    - If kernel baseline is still not active, the playbook exits before asking most interactive questions.
    - Once kernel baseline is active, it prompts for:
-   - **Boot mode** – 1 = GNOME on boot, 2 = minimal X / king_detector (no GNOME).
+   - **Boot mode** – 1 = minimal X / king_detector (no GNOME) [default], 2 = GNOME on boot.
    - **Deployment mode + WiFi readiness decision** (runs early; option to skip WiFi enforcement for test/check runs).
    - Near the end of the run, it prompts for:
    - **Healthchecks.io** URL (optional; Enter to skip).
@@ -63,8 +63,8 @@ This document describes the full setup flow, what is automated, and what stays m
 
 ## Target deployment: GNOME vs minimal X
 
-- **Boot mode 1 (GNOME):** Full desktop on boot; standard GDM and desktop workflow.
-- **Boot mode 2 (minimal X / king_detector):** Boot to server (no GNOME); run crane display via xinit and wrapper (xdotool, xrandr). Deps `xdotool` and `x11-xserver-utils` are installed by the playbook when you choose this option. The crane-display service and scripts live in the king_detector repo, not in this repo.
+- **Boot mode 1 (minimal X / king_detector) [default]:** Boot to server (no GNOME); run crane display via xinit and wrapper (xdotool, xrandr). `xdotool` and `x11-xserver-utils` are installed by the playbook. The crane-display service and scripts live in the king_detector repo, not in this repo.
+- **Boot mode 2 (GNOME):** Full desktop on boot; standard GDM and desktop workflow.
 
 ---
 

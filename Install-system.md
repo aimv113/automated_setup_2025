@@ -56,7 +56,7 @@ ansible-playbook ubuntu-setup.yml -K
 
 **Standard run (single pass):** prompts for:
 - WiFi strategy — press Enter to accept the default (option 1: standard in-kernel drivers, no kernel changes)
-- Boot mode: GNOME or minimal X / king_detector
+- Boot mode: press Enter for option 1 (minimal X / king_detector), option 2 for GNOME
 - Git `user.name` / `user.email` and GitHub SSH key (near end of run)
 - Healthchecks.io ping URL (optional; press Enter to skip)
 

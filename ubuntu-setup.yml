@@ -213,22 +213,63 @@
     # ==========================================================
     # 4. PROMPTS (after kernel baseline gate)
     # ==========================================================
+
+    - name: (~5%) Detect ethernet adapters for boot mode summary
+      shell: |
+        for iface in /sys/class/net/*; do
+          name=$(basename "$iface")
+          [ "$name" = "lo" ] && continue
+          [ -d "/sys/class/net/$name/wireless" ] && continue
+          case "$name" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
+          [ -e "/sys/class/net/$name/device" ] || continue
+          mac=$(cat "/sys/class/net/$name/address" 2>/dev/null || echo "N/A")
+          echo "$name ($mac)"
+        done
+      register: hw_ethernet_summary
+      changed_when: false
+      failed_when: false
+
+    - name: (~5%) Detect wireless adapters for boot mode summary
+      shell: |
+        for iface in /sys/class/net/*; do
+          name=$(basename "$iface")
+          [ -d "/sys/class/net/$name/wireless" ] && echo "$name"
+        done
+      register: hw_wifi_summary
+      changed_when: false
+      failed_when: false
+
+    - name: (~5%) Detect touchscreen for boot mode summary
+      shell: lsusb | grep -i -E 'egalax|0eef:'
+      register: hw_touchscreen_summary
+      changed_when: false
+      failed_when: false
+
     - name: (~5%) Prompt for boot mode
       pause:
         prompt: |
 
           ============================================================
+          DETECTED HARDWARE
+          ============================================================
+          Ethernet adapters : {{ hw_ethernet_summary.stdout_lines | default([]) | join(', ') or 'none detected' }}
+          WiFi interfaces   : {{ hw_wifi_summary.stdout_lines | default([]) | join(', ') or 'none detected' }}
+          Touchscreen (USB) : {{ (hw_touchscreen_summary.stdout | trim) if hw_touchscreen_summary.rc == 0 else 'not detected' }}
+
+          ============================================================
           BOOT MODE
           ============================================================
           Do you want:
-            1) GNOME to open on boot (full desktop)
-            2) Minimal X / king_detector approach (boot to server, no GNOME; xdotool-style)
+            1) Minimal X / king_detector (boot to server, no GNOME; xdotool-style)  [DEFAULT]
+            2) GNOME on boot (full desktop)
+
+          Press Enter for option 1 (minimal X).
           Enter 1 or 2
       register: boot_mode_prompt
 
     - name: (~10%) Set boot mode fact
       set_fact:
-        boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '1' else 'minimal_x' }}"
+        boot_mode: "{{ 'gnome' if boot_mode_prompt.user_input | default('1') | trim == '2' else 'minimal_x' }}"
 
     # ==========================================================
     # 5. WIFI READINESS (early gate before the rest of setup)
@@ -329,9 +370,11 @@
           {{ wifi_proposed_action }}
 
           Choose:
-            1) Proceed with proposed action
+            1) Proceed with proposed action  [DEFAULT]
             2) Skip WiFi changes/check enforcement for this run
             3) Abort run now
+
+          Press Enter to proceed.
           Enter 1, 2, or 3
       register: wifi_plan_prompt
       when: wifi_confirm_required | bool
