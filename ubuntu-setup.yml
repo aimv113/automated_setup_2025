@@ -778,28 +778,24 @@
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*Port\s+'
         line: "Port {{ ssh_port }}"
-      notify: restart sshd
 
     - name: (~30%) Set PasswordAuthentication no in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PasswordAuthentication\s+'
         line: "PasswordAuthentication no"
-      notify: restart sshd
 
     - name: (~30%) Set PubkeyAuthentication yes in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PubkeyAuthentication\s+'
         line: "PubkeyAuthentication yes"
-      notify: restart sshd
 
     - name: (~30%) Set PermitRootLogin no in sshd_config
       lineinfile:
         path: /etc/ssh/sshd_config
         regexp: '^#?\s*PermitRootLogin\s+'
         line: "PermitRootLogin no"
-      notify: restart sshd
 
     - name: (~30%) Validate sshd_config
       command: /usr/sbin/sshd -t -f /etc/ssh/sshd_config
@@ -2074,9 +2070,6 @@
           ===================================================================
 
   handlers:
-    - name: (~100%) restart sshd
-      listen: restart sshd
-      systemd: { name: sshd, state: restarted }
     - name: (~100%) restart docker
       listen: restart docker
       systemd: { name: docker, state: restarted }
