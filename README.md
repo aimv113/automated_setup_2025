@@ -31,6 +31,8 @@ sudo reboot
 ansible-playbook post-reboot-verify.yml -K
 ```
 
+> **⚠️ The verification playbook automatically reboots the machine ~10 seconds after it finishes.** This is expected — it applies network and timezone changes.
+
 Post-reboot steps (Tailscale, king_detector setup, camera settings) are in [Setup-post-reboot.md](Setup-post-reboot.md).
 
 ---

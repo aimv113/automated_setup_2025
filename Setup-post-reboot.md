@@ -42,11 +42,14 @@ ansible-playbook post-reboot-verify.yml -K
 # ansible-playbook post-reboot-verify.yml -K -e "camera_expected_interface=enp3s0"
 ```
 
+> **⚠️ NOTE: The machine will automatically reboot ~10 seconds after this playbook completes.**
+> This applies network and timezone changes. Do not interrupt it — the reboot is expected and required.
+
 **What this does:** verifies NVIDIA driver, CUDA, Docker GPU runtime, PyTorch CUDA support, TensorRT packages, data folders, networking (NetworkManager + netplan: DHCP + camera static; optional WiFi), and timezone (America/Chicago).
 
 Camera networking normal path uses `camera_expected_interface` (default `ens3f0`) and assigns it `192.168.1.200/24`; if unreachable, the playbook falls back to auto-detection logic.
 
-**Machine setup is complete after this playbook passes.**
+**Machine setup is complete after this playbook passes and the machine comes back up.**
 
 After it runs, do a quick network sanity check:
 
