@@ -12,47 +12,14 @@ Step-by-step guide to get from bare hardware to a running Ubuntu machine ready f
 
 ## 2. Install Ubuntu 24.04
 
-**Option A: Fresh Server Installation (Recommended)**
+Fresh Server Installation (Recommended)**
 Download Ubuntu 24.04 Server, boot from USB. During the installer you can send SSH keys from GitHub — do this to skip the manual key step below.
 
 For the recommended disk layout (ext4 `/data` + btrfs system snapshots) see [PARTITION_LAYOUT_GUIDE.md](PARTITION_LAYOUT_GUIDE.md).
 
-**Option B: Server + Desktop**
-If you installed Ubuntu Server and want the desktop environment:
-
-```bash
-sudo apt update
-sudo apt install ubuntu-desktop -y
-sudo systemctl set-default graphical.target
-```
 
 Reboot before running the playbook.
 
----
-
-## 3. Enable SSH
-
-Enable SSH so you can connect remotely:
-
-```bash
-sudo systemctl start ssh
-sudo systemctl enable ssh
-hostname -I   # note the IP address
-```
-
-If you did not send keys during Ubuntu install, add your public key manually:
-
-```bash
-nano ~/.ssh/authorized_keys   # paste your key
-```
-
-Connect from your Mac (default port 22 until the playbook locks it down):
-
-```bash
-ssh username@<ip-address>
-```
-
----
 
 ## 4. Connect via ZeroTier (optional, for remote/iLO access)
 
