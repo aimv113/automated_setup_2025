@@ -37,7 +37,7 @@ Update the host in Terminus with the new IP and verify the SSH key is in place o
 ```bash
 cd ~/automated_setup_2025
 sudo apt update
-ansible-playbook post-reboot-verify.yml -K
+ansible-playbook post-reboot-verify.yml
 ```
 
 **What this does:** verifies NVIDIA driver, CUDA, Docker GPU runtime, PyTorch CUDA support, TensorRT packages, data folders, networking (NetworkManager + netplan: DHCP + camera static; optional WiFi), and timezone (America/Chicago).
