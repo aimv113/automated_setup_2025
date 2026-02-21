@@ -18,7 +18,7 @@ Download Ubuntu 24.04 Server, boot from USB. During the installer you can send S
 For the recommended disk layout (ext4 `/data` + btrfs system snapshots) see [PARTITION_LAYOUT_GUIDE.md](PARTITION_LAYOUT_GUIDE.md).
 
 
-Reboot before running the playbook.
+## 3. Reboot before running the playbook.
 
 
 ## 4. Connect via ZeroTier (optional, for remote/iLO access)
