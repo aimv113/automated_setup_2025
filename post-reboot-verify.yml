@@ -244,7 +244,7 @@
       set_fact:
         internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else ((ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first) if (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '')) }}"
 
-    - name: (~40%) Build list of camera interfaces (connected ethernet, no IPv4 or camera-range IP; exclude internet interface)
+    - name: (~40%) Build list of camera interfaces (connected ethernet with no DHCP address; exclude internet interface)
       shell: |
         default_if="{{ default_route_iface.stdout }}"
         internet_if="{{ internet_interface | default('') }}"
@@ -252,9 +252,11 @@
           [ -z "$iface" ] && continue
           [ "$iface" = "$default_if" ] && continue
           [ -n "$internet_if" ] && [ "$iface" = "$internet_if" ] && continue
-          has_ipv4=$(ip -4 addr show "$iface" 2>/dev/null | grep -c "inet " || true)
-          is_camera_ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -c "192\.168\.1\." || true)
-          if [ "$has_ipv4" = "0" ] || [ "$is_camera_ip" != "0" ]; then
+          # DHCP addresses appear as "dynamic" in ip-addr output.
+          # Camera NICs never get DHCP (direct link to camera) so they have
+          # no IP on first run, or a static IP (no "dynamic") on re-runs.
+          has_dhcp=$(ip -4 addr show "$iface" 2>/dev/null | grep -c "dynamic" || true)
+          if [ "$has_dhcp" = "0" ]; then
             echo "$iface"
           fi
         done
