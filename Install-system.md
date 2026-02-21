@@ -44,7 +44,7 @@ ssh-keygen -R <old-ip>    # clear stale host key if needed
 ## 5. Install Ansible, clone repo, and run the setup playbook
 
 ```bash
-sudo apt update && sudo apt install ansible git -y
+sudo apt update && sudo apt upgrade && sudo apt install ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025
 ./run-playbook-smart.sh ubuntu-setup.yml
