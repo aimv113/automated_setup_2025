@@ -17,6 +17,9 @@ Use GPT + UEFI boot.
 | `/` (Btrfs volume) | btrfs | 500 GiB | Ubuntu system + snapshots |
 | `/data` | ext4 | Remainder (5 TB) | High-write app/media/data storage |
 
+<img width="787" height="521" alt="image" src="https://github.com/user-attachments/assets/b2ae2ddd-7991-4ddd-9c0c-81881d3ea7e1" />
+
+
 ## Btrfs subvolume plan
 
 Inside the btrfs system volume, create subvolumes:
