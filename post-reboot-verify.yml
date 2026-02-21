@@ -367,7 +367,9 @@
       when: apply_machine_network | default(false) | bool
 
     - name: (~65%) Apply netplan (safe even if SSID absent)
-      command: netplan generate && netplan apply
+      shell: netplan generate && netplan apply
+      args:
+        executable: /bin/bash
 
     - name: (~65%) Set WiFi device to managed by NetworkManager
       command: nmcli device set "{{ machine_wifi_interface }}" managed yes

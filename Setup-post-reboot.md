@@ -37,9 +37,9 @@ Update the host in Terminus with the new IP and verify the SSH key is in place o
 ```bash
 cd ~/automated_setup_2025
 sudo apt update
-ansible-playbook post-reboot-verify.yml
+ansible-playbook post-reboot-verify.yml -K
 # optional override if camera NIC name is different:
-# ansible-playbook post-reboot-verify.yml -e "camera_expected_interface=enp3s0"
+# ansible-playbook post-reboot-verify.yml -K -e "camera_expected_interface=enp3s0"
 ```
 
 **What this does:** verifies NVIDIA driver, CUDA, Docker GPU runtime, PyTorch CUDA support, TensorRT packages, data folders, networking (NetworkManager + netplan: DHCP + camera static; optional WiFi), and timezone (America/Chicago).

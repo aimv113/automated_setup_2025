@@ -47,7 +47,7 @@ This document describes the full setup flow, what is automated, and what stays m
 - Touchscreen base setup near end of `ubuntu-setup.yml` (packages + `/etc/X11/xorg.conf.d/99-touchscreen.conf`).
 - **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager, `rfkill`, and `iw`, then writes a single netplan with renderer NetworkManager (default-route interface DHCP, expected camera interface `camera_expected_interface` static 192.168.1.200/24, optional WiFi SSID). If the expected camera interface is missing, it falls back to auto-detection. For open WiFi, set `wifi-sec.key-mgmt none` and do not pin BSSID. Removes 50-cloud-init to avoid conflicts.
 - **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
-- No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).
+- No systemd reboot timer; scheduled reboots via root crontab only (must be added manually — see "What stays manual" below).
 
 ---
 
