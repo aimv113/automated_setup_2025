@@ -87,6 +87,8 @@ If touch offset is wrong, run calibrator and update values in `/etc/X11/xorg.con
 ```bash
 sudo xinput_calibrator
 ```
+Follow instructions at the [touch test](https://github.com/aimv113/touch-test/)
+
 
 ---
 
