@@ -244,10 +244,30 @@
       set_fact:
         internet_interface: "{{ default_route_iface.stdout if default_route_iface.stdout else (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first if (connected_ethernet_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else ((ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | first) if (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 1) else '')) }}"
 
-    - name: (~40%) Build list of camera interfaces (connected ethernet with no DHCP address; exclude internet interface)
+    - name: (~40%) Warn when configured camera_expected_interface is invalid
+      debug:
+        msg: "Configured camera_expected_interface={{ camera_expected_interface }} is unavailable or is the internet interface; using auto-detection fallback."
+      when: >
+        camera_expected_interface is defined and camera_expected_interface | length > 0 and
+        (
+          (camera_expected_interface not in (ethernet_ifaces_raw.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list))
+          or
+          (camera_expected_interface == internet_interface)
+        )
+
+    - name: (~40%) Build list of camera interfaces (prefer expected adapter; fallback to auto-detect)
       shell: |
-        default_if="{{ default_route_iface.stdout }}"
+        expected_if="{{ camera_expected_interface | default('') }}"
         internet_if="{{ internet_interface | default('') }}"
+
+        # Normal path: use configured expected camera adapter directly.
+        if [ -n "$expected_if" ] && [ "$expected_if" != "$internet_if" ]; then
+          for iface in {{ ethernet_ifaces_raw.stdout_lines | default([]) | join(' ') }}; do
+            [ "$iface" = "$expected_if" ] && echo "$expected_if" && exit 0
+          done
+        fi
+
+        default_if="{{ default_route_iface.stdout }}"
         for iface in {{ connected_ethernet_raw.stdout_lines | default([]) | join(' ') }}; do
           [ -z "$iface" ] && continue
           [ "$iface" = "$default_if" ] && continue
@@ -509,7 +529,9 @@
       register: camera_ping_ifaces_fallback
       changed_when: false
       failed_when: false
-      when: ethernet_ifaces_raw.stdout_lines | default([]) | length > 0
+      when: >
+        ethernet_ifaces_raw.stdout_lines | default([]) | length > 0 and
+        (camera_ping_ifaces_configured.stdout_lines | default([]) | select('match', '^[a-zA-Z]') | list | length == 0)
 
     - name: (~95%) Set camera reachability facts
       set_fact:
@@ -577,3 +599,11 @@
           {% endif %}
 
           Log file: {{ log_file }}
+
+          Rebooting in 10 seconds to apply network and timezone changes...
+
+    - name: (~100%) Reboot to apply network and timezone changes
+      reboot:
+        msg: "Rebooting after post-reboot-verify to apply network/timezone changes"
+        pre_reboot_delay: 10
+        reboot_timeout: 120
