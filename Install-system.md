@@ -54,14 +54,14 @@ cd automated_setup_2025
 ./run-playbook-smart.sh ubuntu-setup.yml
 ```
 
-**Two-pass run on fresh machines:**
-- **Pass 1:** installs/pins HWE kernel (`6.17.0-14-generic`) and exits if a reboot is needed.
-- Reboot: `sudo reboot`
-- **Pass 2:** run the same command again. Prompts for:
-  - WiFi strategy (first decision)
-  - Boot mode: GNOME or minimal X / king_detector
-  - Git `user.name` / `user.email` and GitHub SSH key (near end of run)
-  - Healthchecks.io ping URL (optional; press Enter to skip)
+**Standard run (single pass):** prompts for:
+- WiFi strategy — press Enter to accept the default (option 1: standard in-kernel drivers, no kernel changes)
+- Boot mode: GNOME or minimal X / king_detector
+- Git `user.name` / `user.email` and GitHub SSH key (near end of run)
+- Healthchecks.io ping URL (optional; press Enter to skip)
+
+**If you chose option 3 (HWE kernel, advanced — RTL8812AU USB WiFi adapter only):**
+The playbook installs kernel 6.17 and exits. Reboot (`sudo reboot`), then run the same command again to continue.
 
 If WiFi does not come up after the normal flow, use the dedicated recovery playbook: [WIFI_SETUP.md](WIFI_SETUP.md).
 

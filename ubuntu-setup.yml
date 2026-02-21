@@ -36,7 +36,7 @@
     rtl8812au_dkms_repo_path: "{{ installers_base_path }}/8812au-20210820"
     hwe_kernel_meta_package: "linux-generic-hwe-24.04"
     hwe_kernel_headers_meta_package: "linux-headers-generic-hwe-24.04"
-    hwe_kernel_pin_enabled: true
+    hwe_kernel_pin_enabled: true  # only runs when wifi_setup_strategy == 'hwe_kernel_update' (option 1 at prompt)
     hwe_kernel_pin_version: "6.17.0-14"
     hwe_kernel_flavor: "generic"
     hwe_kernel_require_reboot_before_continue: true
@@ -124,23 +124,25 @@
         prompt: |
 
           ============================================================
-          WIFI STRATEGY (FIRST DECISION)
+          WIFI STRATEGY
           ============================================================
           Choose the WiFi path for this run:
-            1) HWE kernel update path (install/pin HWE kernel and reboot gate)
-            2) DKMS path for RTL8812AU if adapter {{ rtl8812au_usb_id }} is present
-            3) Native Linux driver path (use only in-kernel drivers if supported)
-            4) Manual WiFi setup (I will handle WiFi myself)
-            5) Testing / no WiFi now (same behavior as manual skip)
+            1) Standard — use existing in-kernel drivers, check WiFi and ethernet  [DEFAULT]
+            2) DKMS path — build RTL8812AU driver if adapter {{ rtl8812au_usb_id }} is present
+            3) HWE kernel (advanced) — install/pin kernel 6.17 for RTL8812AU USB WiFi adapter
+            4) Manual — I will handle WiFi myself
+            5) Testing / no WiFi needed for this run
+
+          Press Enter for option 1 (standard).
           Enter 1, 2, 3, 4, or 5
       register: wifi_strategy_prompt
 
     - name: (~5%) Set WiFi strategy facts
       set_fact:
-        wifi_strategy_choice: "{{ (wifi_strategy_prompt.user_input | default('3') | trim) if (wifi_strategy_prompt.user_input | default('3') | trim) in ['1', '2', '3', '4', '5'] else '3' }}"
-        wifi_setup_strategy: "{{ {'1': 'hwe_kernel_update', '2': 'dkms_preferred', '4': 'manual', '5': 'manual_test'}.get((wifi_strategy_prompt.user_input | default('3') | trim), 'native_preferred') }}"
-        deployment_mode: "{{ 'test' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else 'production' }}"
-        wifi_operator_decision: "{{ '2' if (wifi_strategy_prompt.user_input | default('3') | trim) in ['4', '5'] else '1' }}"
+        wifi_strategy_choice: "{{ (wifi_strategy_prompt.user_input | default('1') | trim) if (wifi_strategy_prompt.user_input | default('1') | trim) in ['1', '2', '3', '4', '5'] else '1' }}"
+        wifi_setup_strategy: "{{ {'2': 'dkms_preferred', '3': 'hwe_kernel_update', '4': 'manual', '5': 'manual_test'}.get((wifi_strategy_prompt.user_input | default('1') | trim), 'native_preferred') }}"
+        deployment_mode: "{{ 'test' if (wifi_strategy_prompt.user_input | default('1') | trim) in ['4', '5'] else 'production' }}"
+        wifi_operator_decision: "{{ '2' if (wifi_strategy_prompt.user_input | default('1') | trim) in ['4', '5'] else '1' }}"
 
     # ==========================================================
     # 2. HWE KERNEL BASELINE (optional, based on WiFi strategy)

@@ -18,9 +18,11 @@ cd automated_setup_2025
 
 See [Install-system.md](Install-system.md) for pre-requisites (Ubuntu install, SSH access).
 
-**Two-pass run on fresh machines:**
-1. Pass 1 installs/pins the HWE kernel baseline (`6.17.0-14-generic`) and exits if a reboot is needed.
-2. Reboot, then run the same command again. Playbook prompts for WiFi strategy, boot mode, Git identity, and Healthchecks URL; then runs the full setup.
+**Standard run (single pass):**
+The playbook prompts for WiFi strategy (press Enter for option 1: standard in-kernel drivers), boot mode, Git identity, and Healthchecks URL; then runs the full setup.
+
+**If you need the HWE kernel (option 3 at the WiFi prompt — advanced, RTL8812AU only):**
+Pass 1 installs kernel 6.17 and exits for a reboot. Reboot (`sudo reboot`), then run the playbook again to continue.
 
 After setup completes, reboot and run the verification playbook:
 
@@ -75,10 +77,10 @@ Playbook detects virtualisation with `systemd-detect-virt`:
 
 ### WiFi
 
-WiFi strategy is chosen at playbook start:
-1. HWE kernel update path (recommended for RTL8812AU)
+WiFi strategy is chosen at playbook start (press Enter for option 1):
+1. Standard — use existing in-kernel drivers, check WiFi and ethernet  [default]
 2. DKMS path for RTL8812AU (`morrownr/8812au-20210820`)
-3. Native Linux in-kernel driver
+3. HWE kernel — install/pin kernel 6.17 (advanced, RTL8812AU only)
 4. Manual / skip
 
 `post-reboot-verify.yml` configures NetworkManager + netplan: DHCP on the internet NIC, static `192.168.1.200` on the camera NIC, and two WiFi profiles (`OFFICEGST-2.4GHz` priority 100, `OFFICEGST-5GHz` priority 10). Override SSID with `-e "machine_wifi_ssid=OtherNetwork"`.
