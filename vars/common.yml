@@ -34,6 +34,7 @@ tensorrt_version_pattern: "10.13.*"
 # Update these if ethernet interface names or camera IP range change.
 machine_timezone: "America/Chicago"
 machine_wifi_ssid: "OFFICEGST"
+machine_wifi_interface: ""   # optional override (for example wls3); auto-detect when empty
 camera_expected_interface: "ens3f0"
 camera_static_start: 200
 camera_probe_ip: "192.168.1.100"

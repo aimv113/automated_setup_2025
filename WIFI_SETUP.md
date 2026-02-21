@@ -97,7 +97,7 @@ After strategy confirmation, the playbook:
   - `<SSID>-2.4GHz` (`bg`, autoconnect-priority `100`)
   - `<SSID>-5GHz` (`a`, autoconnect-priority `10`)
 - Clears security fields for open networks, or sets WPA-PSK when `machine_wifi_psk` is provided
-- Attempts connection when SSID is visible
+- Attempts preferred profile activation in a non-fatal way even when SSID is not currently visible
 
 ---
 
@@ -126,42 +126,52 @@ iw dev <wifi_iface> link
 
 Use these if `post-reboot-verify.yml` ran but WiFi or the camera NIC are not working.
 
-### WiFi: manual reset / recreate profile (open SSID)
+### WiFi: manual reset / recreate profile (OFFICEGST open SSID)
 
 ```bash
-IFACE="wls2"      # replace with your WiFi interface
-SSID="OFFICEGST"  # replace with your SSID
+## Understood - same SSID, two band-locked profiles, 2.4 GHz preferred.
+## Since OFFICEGST is open (SECURITY --), do not set any wifi-sec options.
+## 1) Clean old profiles
+sudo nmcli connection delete OFFICEGST-2.4GHz 2>/dev/null
+sudo nmcli connection delete OFFICEGST-5GHz 2>/dev/null
 
-sudo rfkill unblock all
-sudo nmcli radio wifi on
-sudo ip link set "$IFACE" up
-sudo nmcli device set "$IFACE" managed yes
-
-sudo nmcli -t -f NAME connection show | grep -E "^${SSID}" | xargs -r -I{} sudo nmcli connection delete "{}"
-
+## 2) Create 2.4 GHz (HIGH priority)
 sudo nmcli connection add \
-  type wifi ifname "$IFACE" \
-  con-name "${SSID}-2.4GHz" \
-  ssid "$SSID" \
+  type wifi ifname wls3 \
+  con-name OFFICEGST-2.4GHz \
+  ssid OFFICEGST \
   802-11-wireless.band bg \
   connection.autoconnect yes \
   connection.autoconnect-priority 100 \
   ipv4.method auto \
   ipv6.method auto
-sudo nmcli connection modify "${SSID}-2.4GHz" wifi-sec.key-mgmt none
 
+## 3) Create 5 GHz (LOWER priority)
 sudo nmcli connection add \
-  type wifi ifname "$IFACE" \
-  con-name "${SSID}-5GHz" \
-  ssid "$SSID" \
+  type wifi ifname wls3 \
+  con-name OFFICEGST-5GHz \
+  ssid OFFICEGST \
   802-11-wireless.band a \
   connection.autoconnect yes \
   connection.autoconnect-priority 10 \
   ipv4.method auto \
   ipv6.method auto
-sudo nmcli connection modify "${SSID}-5GHz" wifi-sec.key-mgmt none
 
-sudo nmcli connection up "${SSID}-2.4GHz" || sudo nmcli connection up "${SSID}-5GHz"
+## 4) Bring up preferred one
+sudo nmcli connection up OFFICEGST-2.4GHz || sudo nmcli connection up OFFICEGST-5GHz
+
+## 5) Verify band lock
+iw dev wls3 link
+
+## Check:
+## freq: 2412-2484 -> 2.4 GHz
+## freq: 5180+ -> 5 GHz
+
+## Optional (production-grade stability tweak)
+## Lock background scanning off to reduce roaming:
+sudo nmcli connection modify OFFICEGST-2.4GHz wifi.powersave 2
+sudo nmcli connection modify OFFICEGST-5GHz wifi.powersave 2
+## (2 = disable power saving)
 ```
 
 ### Camera NIC: find and assign static IP
