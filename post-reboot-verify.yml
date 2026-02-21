@@ -604,8 +604,7 @@
 
           Rebooting in 10 seconds to apply network and timezone changes...
 
-    - name: (~100%) Reboot to apply network and timezone changes
-      reboot:
-        msg: "Rebooting after post-reboot-verify to apply network/timezone changes"
-        pre_reboot_delay: 10
-        reboot_timeout: 120
+    - name: (~100%) Schedule reboot to apply network and timezone changes
+      shell: nohup bash -c 'sleep 10 && reboot' > /dev/null 2>&1 &
+      async: 1
+      poll: 0
