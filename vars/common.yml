@@ -1,0 +1,43 @@
+---
+# vars/common.yml
+# Shared variables imported by both ubuntu-setup.yml and post-reboot-verify.yml.
+# Update versions here and both playbooks stay in sync.
+#
+# VERSION LOCKING NOTE:
+# The GPU stack (NVIDIA driver, CUDA, TensorRT) is intentionally frozen.
+# When updating any version, update ALL related vars together:
+#   nvidia_driver_version_full  →  also update cuda_local_repo_url (contains the driver version)
+#   cuda_version / cuda_version_full  →  also update cuda_local_repo_url, tensorrt_local_repo_url,
+#                                        and post-reboot verification paths
+#   tensorrt_version_full  →  also update tensorrt_local_repo_url
+
+# ── User / paths ──────────────────────────────────────────────────────────────
+ssh_user: "{{ ansible_env.SUDO_USER | default(ansible_env.USER) }}"
+user_home: "{{ '/home/' + (ansible_env.SUDO_USER | default(ansible_env.USER)) }}"
+app_data_path: "/data"
+
+# ── NVIDIA Driver ─────────────────────────────────────────────────────────────
+nvidia_driver_version: "580"
+nvidia_driver_version_full: "580.95.05"
+
+# ── CUDA Toolkit ──────────────────────────────────────────────────────────────
+cuda_version: "13-0"                   # apt package suffix  e.g. cuda-toolkit-13-0
+cuda_version_full: "13.0"             # display / path      e.g. /usr/local/cuda-13.0
+cuda_version_full_numeric: "13.0.2"   # full patch version  e.g. in download URL
+
+# ── TensorRT ──────────────────────────────────────────────────────────────────
+tensorrt_version_major: "10.13"
+tensorrt_version_full: "10.13.3"
+tensorrt_version_pattern: "10.13.*"
+
+# ── Networking ────────────────────────────────────────────────────────────────
+# Update these if ethernet interface names or camera IP range change.
+machine_timezone: "America/Chicago"
+machine_wifi_ssid: "OFFICEGST"
+camera_static_start: 200
+camera_probe_ip: "192.168.1.100"
+camera_probe_temp_ip: "192.168.1.254"
+machine_network_remove_cloud_init: true
+
+# ── SSH ───────────────────────────────────────────────────────────────────────
+ssh_port: 33412

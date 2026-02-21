@@ -1,77 +1,70 @@
-# Post-reboot instructions
+# Post-reboot checklist
 
-After running the main setup playbook and rebooting, work through this checklist.
+Work through this after the main setup playbook has run and the machine has rebooted.
 
-Add back up IP route, follow link online and connect with DMB git hub account
+---
+
+## 1. Tailscale
+
+Connect to the VPN so the machine is reachable remotely:
+
 ```bash
 sudo tailscale up
 ```
 
-## a. Modify ssh standard port in .ssh/config (ON LOCAL MACHINE)
-```bash
-sudo nano .ssh/config
-```
+Add route back IP if needed and approve in the Tailscale admin console.
 
-## b. add / update IP in Terminus & key to remote
-```bash
-ip a
-sudo nano ~/.ssh/authorized_keys
-```
-
-## c. sanity check ssh config on remote
-```bash
-sudo nano /etc/ssh/sshd_config
-```
 ---
 
-## 1. Verify playbook
+## 2. Update local SSH config (on your Mac)
 
-- [ ] Run the verification playbook:
+```bash
+nano ~/.ssh/config
+```
+
+Add or update the host entry with the correct IP and port 33412. Then clear any stale host key:
+
+```bash
+ssh-keygen -R <machine-ip>
+```
+
+Update the host in Terminus with the new IP and verify the SSH key is in place on the remote.
+
+---
+
+## 3. Run the verification playbook
 
 ```bash
 cd ~/automated_setup_2025
 ./run-playbook-smart.sh post-reboot-verify.yml
 ```
 
-**Verification includes:** NVIDIA driver, CUDA toolkit, Docker NVIDIA runtime, PyTorch CUDA support, TensorRT packages, data folders, **networking** (NetworkManager + netplan: DHCP + camera static; optional WiFi), and **timezone** (America/Chicago). Machine setup is complete after this playbook.
+**What this does:** verifies NVIDIA driver, CUDA, Docker GPU runtime, PyTorch CUDA support, TensorRT packages, data folders, networking (NetworkManager + netplan: DHCP + camera static; optional WiFi), and timezone (America/Chicago).
 
-**WiFi (connect automatically):** Netplan renderer is set to NetworkManager via **01-network-manager.yaml**. The playbook installs `network-manager`, `rfkill`, and `iw`, unblocks WiFi, enables radio, sets device managed/up, recreates the two NM profiles (no BSSID lock): **OFFICEGST-2.4GHz** (band bg, autoconnect-priority 100) and **OFFICEGST-5GHz** (band a, priority 10), sets open security mode with `wifi-sec.key-mgmt none`, then attempts a non-fatal connect only when SSID is visible. If OFFICEGST is absent the playbook still succeeds and NetworkManager will autoconnect when the network appears. To use a different SSID: `-e "machine_wifi_ssid=OtherNetwork"`.
+**Machine setup is complete after this playbook passes.**
 
-For dedicated WiFi recovery (smart adapter/kernel detection + interactive strategy confirmation), use: [WIFI_SETUP.md](WIFI_SETUP.md).
+After it runs, do a quick network sanity check:
 
-**Camera NIC auto-check warning:** `post-reboot-verify.yml` now probes camera reachability at `192.168.1.100`. If no ethernet adapter can reach that target (excluding any adapter that can ping `8.8.8.8`), it logs and prints a warning that manual camera adapter setup is required.
-
-### Network sanity checks (WiFi + camera)
-
-Use this after `post-reboot-verify.yml`. Keep this section check-only; manual recovery commands are in **Appendix A** below.
-
-Set variables first:
 ```bash
-IFACE="wls2"        # replace with your WiFi interface
-SSID="OFFICEGST"    # replace if you used a different machine_wifi_ssid
-CAM_IFACE="ens3f0"  # replace with your camera ethernet interface
-CAM_IP="192.168.1.100"
-# Check WiFi radio, device state, and visible networks:
+IFACE="wls2"          # your WiFi interface
+SSID="OFFICEGST"
+CAM_IFACE="ens3f0"    # your camera ethernet interface
+
 nmcli radio wifi
 nmcli device status
-nmcli dev wifi rescan
-nmcli -f IN-USE,SSID,BSSID,CHAN,SIGNAL,SECURITY device wifi list | grep -E "^\*|IN-USE|$SSID"
-# Check WiFi autoconnect profiles and priority:
+nmcli -f IN-USE,SSID,CHAN,SIGNAL device wifi list | grep "$SSID"
 nmcli -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,DEVICE connection show | grep "$SSID"
-# Check active WiFi connection and IP:
-nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show "$IFACE"
-iw dev "$IFACE" link
-# Check camera interface and camera reachability:
 ip -br addr show "$CAM_IFACE"
-ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
+ping -c 3 -I "$CAM_IFACE" 192.168.1.100
 ```
 
-If any check fails, go to **Appendix A. Networking manual fixes**.
+If anything fails see [WIFI_SETUP.md](WIFI_SETUP.md) for manual recovery commands.
 
 ---
-## 6. Touch screen (if applicable)
 
-- [ ] Verify base touchscreen setup from main playbook:
+## 4. Touch screen (if applicable)
+
+Verify setup:
 
 ```bash
 dpkg -l | grep -E 'xserver-xorg-input-(libinput|evdev|multitouch)|xinput-calibrator'
@@ -79,67 +72,66 @@ ls -l /etc/X11/xorg.conf.d/99-touchscreen.conf
 xinput list | grep -i 'egalax\|touch'
 ```
 
-**If you use server + xinit (no GDM):** Skip the GDM steps (WaylandEnable in `/etc/gdm3/custom.conf` and `sudo systemctl restart gdm`). `/etc/X11/xorg.conf.d/99-touchscreen.conf` is applied when X starts via xinit.
+If using GDM: `sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf && sudo systemctl restart gdm`
 
-**If you use GDM:** Run `sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf` and `sudo systemctl restart gdm`.
-
-- [ ] If touch offset is wrong, run calibrator:
+If touch offset is wrong, run calibrator and update values in `/etc/X11/xorg.conf.d/99-touchscreen.conf`:
 
 ```bash
 sudo xinput_calibrator
 ```
 
-Then update calibration values in:
-`/etc/X11/xorg.conf.d/99-touchscreen.conf`
-
-- [ ] Validate calibration values:
-`xinput list-props "$(xinput list | grep -i 'egalax' | grep -o 'id=[0-9]*' | cut -d= -f2)" | grep -E "Evdev Axis Calibration|Driver"`
-- [ ] Run touch test: clone and run [touch-test](https://github.com/aimv113/touch-test/) to confirm touch tracking behavior.
-
 ---
 
-## 7. King_detector setup (crane display)
+## 5. King_detector setup (crane display)
 
-# Vew instructions at [King codebase](https://github.com/davematthewsband/king_detector/tree/2.9.0)
+Follow instructions at the [king_detector repo](https://github.com/davematthewsband/king_detector/tree/2.9.0).
 
-**Manual steps after the script:**
+**Manual steps after the setup script:**
 
-1. **Rsync models** (from your Mac):  
+1. **Rsync models** from your Mac:
    ```bash
    rsync -avz --progress -e "ssh -p 33412" /Volumes/shell/models/current/ lift@<machine>:/data/models/
    ```
-2. **Camera time:** SSH forward camera, open browser, set camera time to match computer:  
+
+2. **Set camera time:** SSH-forward the camera web UI, then match the camera clock to the machine:
    ```bash
    ssh -p 33412 -L 8080:192.168.1.100:80 lift@<machine>
+   # open http://localhost:8080 and set clock
    ```
-   then open `http://localhost:8080`. Make sure timezone of remote machine and camera match (timezone is set by post-reboot-verify).
-3. **SSH config:** Add the host to `~/.ssh/config` on your laptop (e.g. `Host Mars2`).
-4. **Start crane** (on the machine when ready):
+
+3. **SSH config:** Add the host to `~/.ssh/config` on your Mac (e.g. `Host Mars2`).
+
+4. **Start crane display:**
    ```bash
-   sudo systemctl start crane-display-standalone.service && sudo journalctl -u crane-display-standalone -f
+   sudo systemctl start crane-display-standalone.service
+   sudo journalctl -u crane-display-standalone -f
    ```
-5. **FFMPEG** :  
+
+5. **Install ffmpeg:**
    ```bash
    sudo apt update && sudo apt install ffmpeg -y
    ```
 
 ---
 
-## 10. Camera settings
+## 6. Camera settings
 
-- [ ] After king_detector setup (and once camera is reachable): upload/configure camera config. Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`. Website/serving is set up manually.
+Upload the camera config file once the camera is reachable:
 
----
-
-## 11. rev4.3 / tensor-check
-
-- [ ] In your app repo (e.g. rev4.3): run `tests/tensorRT/tensor-check.py` or equivalent.
+- Config file in this repo: `camera-settings/XNZ-L6320AConfigTOBE.bin`
+- Access via the SSH-forwarded camera web UI (see step 5 above).
 
 ---
 
-## 12. fwupd popup fix
+## 7. TensorRT check
 
-- [ ] Disable fwupd refresh to avoid the Apport crash popup (optional):
+In your app repo (e.g. rev4.3): run `tests/tensorRT/tensor-check.py` or equivalent.
+
+---
+
+## 8. fwupd popup fix (optional)
+
+Disable fwupd to avoid the Apport crash popup:
 
 ```bash
 sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
@@ -147,112 +139,6 @@ sudo systemctl disable --now fwupd-refresh.service fwupd-refresh.timer
 
 ---
 
-## Boot mode: minimal X / king_detector
+## Boot mode note
 
-If you chose **minimal X** at playbook start, the playbook installed `xdotool` and `x11-xserver-utils`. Your crane-display service and scripts live in the king_detector repo (not in this repo). See SETUP_WORKFLOW.md for the full flow and both paths (GNOME on boot vs minimal X).
-
----
-
-## Appendix A. Networking manual fixes (only if checks fail)
-
-### A1. WiFi manual reset/recreate (open SSID)
-
-```bash
-IFACE="wls2"      # replace with your WiFi interface
-SSID="OFFICEGST"  # replace with your SSID
-
-sudo rfkill unblock all
-sudo nmcli radio wifi on
-sudo ip link set "$IFACE" up
-sudo nmcli device set "$IFACE" managed yes
-
-sudo nmcli -t -f NAME connection show | grep -E "^${SSID}" | xargs -r -I{} sudo nmcli connection delete "{}"
-
-sudo nmcli connection add \
-  type wifi ifname "$IFACE" \
-  con-name "${SSID}-2.4GHz" \
-  ssid "$SSID" \
-  802-11-wireless.band bg \
-  connection.autoconnect yes \
-  connection.autoconnect-priority 100 \
-  ipv4.method auto \
-  ipv6.method auto
-sudo nmcli connection modify "${SSID}-2.4GHz" wifi-sec.key-mgmt none
-
-sudo nmcli connection add \
-  type wifi ifname "$IFACE" \
-  con-name "${SSID}-5GHz" \
-  ssid "$SSID" \
-  802-11-wireless.band a \
-  connection.autoconnect yes \
-  connection.autoconnect-priority 10 \
-  ipv4.method auto \
-  ipv6.method auto
-sudo nmcli connection modify "${SSID}-5GHz" wifi-sec.key-mgmt none
-
-sudo nmcli connection up "${SSID}-2.4GHz" || sudo nmcli connection up "${SSID}-5GHz"
-```
-
-### A2. Camera NIC manual recovery
-
-```bash
-CAM_IP="192.168.1.100"
-for i in $(ls /sys/class/net); do
-  [ "$i" = "lo" ] && continue
-  [ -d "/sys/class/net/$i/wireless" ] && continue
-  case "$i" in zt*|tailscale*|docker*|br-*|virbr*|veth*|tun*|tap*|wg*|ppp*) continue ;; esac
-  [ -e "/sys/class/net/$i/device" ] || continue
-  ping -c 1 -W 2 -I "$i" 8.8.8.8 >/dev/null 2>&1 && continue
-  sudo ip link set "$i" up
-  sudo ip addr add 192.168.1.254/24 dev "$i" 2>/dev/null || true
-  ping -c 1 -W 2 -I "$i" "$CAM_IP" >/dev/null 2>&1 && echo "camera_iface=$i"
-  sudo ip addr del 192.168.1.254/24 dev "$i" 2>/dev/null || true
-done
-```
-
-After finding `camera_iface`, assign camera IP:
-
-```bash
-CAM_IFACE="ens3f0"   # expected camera interface; change if needed
-CAM_IP="192.168.1.100"
-INTERNET_IFACE="ens21f0"  # expected internet interface; change if needed
-
-sudo ip addr flush dev "$CAM_IFACE"
-sudo ip addr add 192.168.1.200/24 dev "$CAM_IFACE"
-sudo ip link set "$CAM_IFACE" up
-ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
-
-# Persist with netplan (NetworkManager renderer)
-sudo tee /etc/netplan/99-machine-network.yaml > /dev/null <<EOF
-network:
-  version: 2
-  renderer: NetworkManager
-  ethernets:
-    ${INTERNET_IFACE}:
-      dhcp4: true
-    ${CAM_IFACE}:
-      dhcp4: false
-      addresses:
-        - 192.168.1.200/24
-      optional: true
-EOF
-
-sudo netplan generate && sudo netplan apply
-sleep 2
-ip -br addr show "$CAM_IFACE"
-ping -c 3 -I "$CAM_IFACE" "$CAM_IP"
-```
-
-### A3. Network config file locations
-
-```bash
-# Primary files to inspect/edit (50-cloud-init may be absent by design)
-ls -l /etc/netplan/01-network-manager.yaml /etc/netplan/99-machine-network.yaml /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
-
-# Current NetworkManager profiles
-nmcli -f NAME,UUID,TYPE,DEVICE connection show
-
-# Re-apply the full post-reboot network automation
-cd ~/automated_setup_2025
-./run-playbook-smart.sh post-reboot-verify.yml -vv
-```
+If **minimal X / king_detector** boot mode was selected at playbook start, the machine boots to server (no GNOME). The crane-display service starts via xinit from the king_detector repo. `xdotool` and `x11-xserver-utils` are already installed by the playbook.
