@@ -8,7 +8,7 @@ Step-by-step guide to get from bare hardware to a running Ubuntu machine ready f
 
 **Auto power-on with power:** Power and thermal → auto power on.
 
-**Set profile to Graphics Processing
+- Set profile to **Graphics Processing**
 
 ---
 
