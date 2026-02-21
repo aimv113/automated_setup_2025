@@ -53,7 +53,7 @@ ssh-keygen -R <old-ip>    # clear stale host key if needed
 sudo apt update && sudo apt upgrade -y && sudo apt install ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025
-ansible-playbook ubuntu-setup.yml -K
+ansible-playbook ubuntu-setup.yml
 ```
 
 **Standard run (single pass):** prompts for:
