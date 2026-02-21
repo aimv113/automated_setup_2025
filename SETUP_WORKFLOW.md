@@ -45,7 +45,7 @@ This document describes the full setup flow, what is automated, and what stays m
 - Data folders: `data/`, `data/jpg/`, `data/video/`, `data/jpg/no_hook`, `data/jpg/no_overlay`, `data/ad_hoc/`, `data/ad_hoc/jpg/`, `data/ad_hoc/video/` under `~/` (post-reboot-verify).
 - Network info (MACs, IPs) printed near playbook completion for recording.
 - Touchscreen base setup near end of `ubuntu-setup.yml` (packages + `/etc/X11/xorg.conf.d/99-touchscreen.conf`).
-- **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager, `rfkill`, and `iw`, then writes a single netplan with renderer NetworkManager (default-route interface DHCP, other ethernet interfaces static 192.168.1.200, .201, …; optional WiFi SSID). For open WiFi, set `wifi-sec.key-mgmt none` and do not pin BSSID. Removes 50-cloud-init to avoid conflicts.
+- **Networking (NetworkManager + netplan):** post-reboot-verify installs NetworkManager, `rfkill`, and `iw`, then writes a single netplan with renderer NetworkManager (default-route interface DHCP, expected camera interface `camera_expected_interface` static 192.168.1.200/24, optional WiFi SSID). If the expected camera interface is missing, it falls back to auto-detection. For open WiFi, set `wifi-sec.key-mgmt none` and do not pin BSSID. Removes 50-cloud-init to avoid conflicts.
 - **Timezone:** post-reboot-verify sets timezone (default America/Chicago).
 - No systemd reboot timer; scheduled reboots via root crontab only (playbook installs this).
 

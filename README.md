@@ -83,7 +83,7 @@ WiFi strategy is chosen at playbook start (press Enter for option 1):
 3. HWE kernel — install/pin kernel 6.17 (advanced, RTL8812AU only)
 4. Manual / skip
 
-`post-reboot-verify.yml` configures NetworkManager + netplan: DHCP on the internet NIC, static `192.168.1.200` on the camera NIC, and two WiFi profiles (`OFFICEGST-2.4GHz` priority 100, `OFFICEGST-5GHz` priority 10). Override SSID with `-e "machine_wifi_ssid=OtherNetwork"`.
+`post-reboot-verify.yml` configures NetworkManager + netplan: DHCP on the internet NIC, static `192.168.1.200` on `camera_expected_interface` (default `ens3f0`), and two WiFi profiles (`OFFICEGST-2.4GHz` priority 100, `OFFICEGST-5GHz` priority 10). If that interface is unavailable, it falls back to camera auto-detection. Override SSID with `-e "machine_wifi_ssid=OtherNetwork"` and camera NIC with `-e "camera_expected_interface=enp3s0"`.
 
 For WiFi recovery after setup see [WIFI_SETUP.md](WIFI_SETUP.md).
 
