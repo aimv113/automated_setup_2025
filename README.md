@@ -13,13 +13,13 @@ For the full step-by-step setup flow see **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md
 sudo apt update && sudo apt install ansible git -y
 git clone https://github.com/aimv113/automated_setup_2025.git
 cd automated_setup_2025
-./run-playbook-smart.sh ubuntu-setup.yml
+ansible-playbook ubuntu-setup.yml -K
 ```
 
 See [Install-system.md](Install-system.md) for pre-requisites (Ubuntu install, SSH access).
 
 **Standard run (single pass):**
-The playbook prompts for WiFi strategy (press Enter for option 1: standard in-kernel drivers), boot mode, Git identity, and Healthchecks URL; then runs the full setup.
+The playbook prompts for WiFi strategy (press Enter for option 1: standard in-kernel drivers), boot mode, Git identity, and Healthchecks URL; then runs the full setup. If the sudo password prompt (`BECOME password:`) appears, enter it once — it's cached for the rest of the run.
 
 **If you need the HWE kernel (option 3 at the WiFi prompt — advanced, RTL8812AU only):**
 Pass 1 installs kernel 6.17 and exits for a reboot. Reboot (`sudo reboot`), then run the playbook again to continue.
@@ -28,7 +28,7 @@ After setup completes, reboot and run the verification playbook:
 
 ```bash
 sudo reboot
-./run-playbook-smart.sh post-reboot-verify.yml
+ansible-playbook post-reboot-verify.yml -K
 ```
 
 Post-reboot steps (Tailscale, king_detector setup, camera settings) are in [Setup-post-reboot.md](Setup-post-reboot.md).

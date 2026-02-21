@@ -12,15 +12,18 @@
 
   tasks:
 
-    - name: (~0%) Validate become credentials (must run as root)
+    - name: (~0%) Validate running as root (become check)
       command: id -u
       register: become_uid_check
       changed_when: false
-      failed_when: become_uid_check.stdout | trim != "0"
 
-    - name: (~0%) Confirm become validation
-      debug:
-        msg: "Become check passed (effective uid=0)."
+    - name: (~0%) Fail with clear message if not root
+      fail:
+        msg: |
+          This playbook must run with sudo privileges.
+          Run: ansible-playbook post-reboot-verify.yml -K
+          Or ensure your sudo timestamp is active (e.g. run 'sudo -v' first).
+      when: become_uid_check.stdout | trim != "0"
 
     # ==========================================================
     # 1. LOG INITIALIZATION

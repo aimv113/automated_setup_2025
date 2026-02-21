@@ -19,7 +19,7 @@ Run this if either is true:
 Run from repo root:
 
 ```bash
-./run-playbook-smart.sh wifi-recovery.yml
+ansible-playbook wifi-recovery.yml -K
 ```
 
 Use `-v` only if you need extra debugging detail.
@@ -65,7 +65,7 @@ The playbook prompts with:
 You can preselect behavior with vars:
 
 ```bash
-./run-playbook-smart.sh wifi-recovery.yml \
+ansible-playbook wifi-recovery.yml -K \
   -e "wifi_interactive=false wifi_strategy_selection=recommended machine_wifi_ssid=OFFICEGST"
 ```
 
@@ -80,7 +80,7 @@ Allowed `wifi_strategy_selection` values:
 Optional secure SSID example:
 
 ```bash
-./run-playbook-smart.sh wifi-recovery.yml \
+ansible-playbook wifi-recovery.yml -K \
   -e "machine_wifi_ssid=MySSID machine_wifi_psk=MyPassword"
 ```
 
@@ -217,5 +217,5 @@ ping -c 3 -I "$CAM_IFACE" 192.168.1.100
 ```bash
 ls -l /etc/netplan/01-network-manager.yaml /etc/netplan/99-machine-network.yaml /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
 nmcli -f NAME,UUID,TYPE,DEVICE connection show
-./run-playbook-smart.sh post-reboot-verify.yml -vv
+ansible-playbook post-reboot-verify.yml -K -vv
 ```
