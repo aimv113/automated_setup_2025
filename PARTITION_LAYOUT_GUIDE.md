@@ -13,12 +13,9 @@ Use GPT + UEFI boot.
 
 | Mount | Filesystem | Suggested size | Purpose |
 |---|---|---:|---|
-| `/boot/efi` | FAT32 | 1 GiB | UEFI boot files |
 | `/boot` | ext4 | 5 GiB | Kernel/initramfs files plus local recovery ISO storage |
-| `/` (Btrfs volume) | btrfs | 250-500 GiB | Ubuntu system + snapshots |
-| `/home` | btrfs subvolume (`@home`) | Inside btrfs `/` volume | User config and repos with snapshot support |
-| `/data` | ext4 | Remainder (multi-TB) | High-write app/media/data storage |
-| swap (optional) | swap | 8-64 GiB | Optional, based on RAM/hibernation needs |
+| `/` (Btrfs volume) | btrfs | 500 GiB | Ubuntu system + snapshots |
+| `/data` | ext4 | Remainder (5 TB) | High-write app/media/data storage |
 
 ## Btrfs subvolume plan
 
