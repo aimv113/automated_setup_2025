@@ -89,6 +89,9 @@ sudo xinput_calibrator
 ```
 Follow instructions at the [touch test](https://github.com/aimv113/touch-test/)
 
+> **⚠️ NOTE: Run the touch test steps at the URL above, then come back to this checklist.**
+> Complete touchscreen verification/calibration there before continuing with the remaining setup steps.
+
 
 ---
 
