@@ -312,7 +312,7 @@
         msg: "WiFi skipped: no wireless interface; machine cannot connect to {{ machine_wifi_ssid }}. Setup incomplete."
       when: machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is not defined or machine_wifi_interface | length == 0)
 
-    - name: (~55%) '34/53 Set apply_machine_network (we will write netplan: ethernets and/or WiFi)'
+    - name: (~55%) Set apply_machine_network flag (ethernets and/or WiFi)
       set_fact:
         apply_machine_network: "{{ (machine_netplan_ethernets is defined and machine_netplan_ethernets | length > 0) or (machine_wifi_ssid is defined and machine_wifi_ssid | length > 0 and (machine_wifi_interface is defined and machine_wifi_interface | length > 0)) }}"
 
